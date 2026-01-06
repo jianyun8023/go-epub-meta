@@ -6,21 +6,35 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 // Save writes the modified EPUB to the specified output path.
 // It ensures mimetype is written first and uncompressed.
+// It writes to a temporary file first to support in-place rewriting.
 func (r *Reader) Save(outputPath string) error {
-	// 1. Create output file
-	outF, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
+	// 1. Create temp file
+	tempDir := filepath.Dir(outputPath)
+	if tempDir == "." {
+		tempDir = ""
 	}
-	defer outF.Close()
+	tmpF, err := os.CreateTemp(tempDir, "golibri-save-*.epub")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpF.Name()
+
+	// Ensure cleanup if something goes wrong
+	success := false
+	defer func() {
+		tmpF.Close()
+		if !success {
+			os.Remove(tmpPath)
+		}
+	}()
 
 	// 2. Create Zip Writer
-	w := zip.NewWriter(outF)
-	defer w.Close()
+	w := zip.NewWriter(tmpF)
 
 	// 3. Write mimetype (MUST be first, STORED, no extra fields)
 	if err := writeMimetype(w); err != nil {
@@ -83,6 +97,21 @@ func (r *Reader) Save(outputPath string) error {
 		}
 	}
 
+	// Close Writer explicitly to flush
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("failed to close zip writer: %w", err)
+	}
+
+	// We are done writing to temp
+	// Close file handled by defer, but we need to rename now.
+	// Windows rename needs close first.
+	tmpF.Close()
+
+	if err := os.Rename(tmpPath, outputPath); err != nil {
+		return fmt.Errorf("failed to move temp file to output: %w", err)
+	}
+
+	success = true
 	return nil
 }
 

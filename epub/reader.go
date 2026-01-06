@@ -174,6 +174,7 @@ func charsetReader(charset string, input io.Reader) (io.Reader, error) {
 
 type latin1Reader struct {
 	r   io.Reader
+	buf []byte // Reused buffer
 	pending []byte // Bytes read from r that couldn't fit into p yet
 }
 
@@ -189,19 +190,29 @@ func (l *latin1Reader) Read(p []byte) (n int, err error) {
 		return n, nil
 	}
 
-	// Read from source
-	// We need a temp buffer.
-	// If we read len(p), and all are special chars (2 bytes utf8), we produce 2*len(p).
-	// So we should only read len(p)/2 if we want to guarantee fitting?
-	// Or we just read into a temp buf, expand into `expanded`, and copy to p + pending.
+	// Initialize buffer if needed
+	if l.buf == nil {
+		l.buf = make([]byte, 4096)
+	}
 
-	tempBuf := make([]byte, len(p))
-	rn, rErr := l.r.Read(tempBuf)
+	// We want to read enough to potentially fill p, but not overflow too much.
+	// Since 1 byte can become 2, let's read min(len(p), len(l.buf)).
+	toRead := len(p)
+	if toRead > len(l.buf) {
+		toRead = len(l.buf)
+	}
+
+	rn, rErr := l.r.Read(l.buf[:toRead])
 
 	// Expand
-	var expanded []byte
+	// Max expansion is 2x. We need a place to store it.
+	// We could alloc here, or use another member buffer.
+	// Since we immediately copy to p, let's alloc a small slice or reuse if we want to be super optimized.
+	// For now, let's just make expanded slice.
+
+	expanded := make([]byte, 0, rn*2)
 	for i := 0; i < rn; i++ {
-		b := tempBuf[i]
+		b := l.buf[i]
 		if b < 0x80 {
 			expanded = append(expanded, b)
 		} else {
