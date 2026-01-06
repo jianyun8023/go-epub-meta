@@ -78,7 +78,7 @@ func (r *Reader) Save(outputPath string) error {
 		}
 
 		// Copy file
-		if err := copyZipFile(f, w); err != nil {
+		if err := copyZipFile(r, f, w); err != nil {
 			return fmt.Errorf("failed to copy file %s: %w", f.Name, err)
 		}
 	}
@@ -107,35 +107,40 @@ func writeMimetype(w *zip.Writer) error {
 	return nil
 }
 
-func copyZipFile(f *zip.File, w *zip.Writer) error {
-	// Create header from original
-	// We reuse the name and method.
-	// Note: We don't copy all extra fields to avoid corruption if offsets change?
-	// archive/zip handles offsets.
+func copyZipFile(r *Reader, f *zip.File, w *zip.Writer) error {
+	// Use CreateRaw to avoid re-compression.
+	// This requires reading raw bytes from the underlying file.
 
-	// We can't reuse FileHeader directly because it contains specific info about the old file.
-	// We should construct a new one.
-	header := &zip.FileHeader{
-		Name:     f.Name,
-		Method:   f.Method,
-		Modified: f.Modified,
-		// ExternalAttrs is important for permissions (though less critical for epub inner files)
-	}
+	// Construct header
+	// We can mostly copy the header from f, but we need to be careful.
+	// f.FileHeader contains compressed size, uncompressed size, crc32.
+	// CreateRaw expects these to be set correctly if we are writing raw.
 
-	// Open new entry
-	fw, err := w.CreateHeader(header)
+	header := f.FileHeader
+	// Clear flags that might confuse Writer if we are not careful?
+	// Actually, CreateRaw documentation says:
+	// "The provided FileHeader is treated as immutable"
+	// "The caller must write exactly UncompressedSize bytes" -> WAIT.
+	// Docs for CreateRaw: "The caller must write exactly CompressedSize bytes to the returned writer".
+	// Yes.
+
+	fw, err := w.CreateRaw(&header)
 	if err != nil {
 		return err
 	}
 
-	// Open original
-	rc, err := f.Open()
+	// Read raw bytes from Reader's underlying file
+	offset, err := f.DataOffset()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get data offset: %w", err)
 	}
-	defer rc.Close()
 
-	// Copy
-	_, err = io.Copy(fw, rc)
+	// Seek to offset
+	// We can't share the file pointer easily if concurrent, but we are sequential here.
+	// r.file is *os.File
+
+	section := io.NewSectionReader(r.file, offset, int64(f.CompressedSize64))
+
+	_, err = io.Copy(fw, section)
 	return err
 }

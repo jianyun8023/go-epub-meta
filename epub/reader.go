@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"os"
 )
 
 // Container is the structure for META-INF/container.xml
@@ -24,6 +25,9 @@ type Reader struct {
 	zipReader *zip.Reader
 	closer    io.Closer
 
+	// file is the underlying file, needed for raw access
+	file *os.File
+
 	// OpfPath is the location of the OPF file relative to root
 	OpfPath string
 
@@ -37,14 +41,27 @@ type Reader struct {
 
 // Open opens an EPUB file for reading.
 func Open(filepath string) (*Reader, error) {
-	z, err := zip.OpenReader(filepath)
+	f, err := os.Open(filepath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open zip: %w", err)
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	z, err := zip.NewReader(f, info.Size())
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("failed to open zip reader: %w", err)
 	}
 
 	r := &Reader{
-		zipReader: &z.Reader,
-		closer:    z,
+		zipReader: z,
+		closer:    f,
+		file:      f,
 	}
 
 	if err := r.parseContainer(); err != nil {
@@ -157,7 +174,7 @@ func charsetReader(charset string, input io.Reader) (io.Reader, error) {
 
 type latin1Reader struct {
 	r   io.Reader
-	buf []byte // Internal buffer to hold source bytes
+	pending []byte // Bytes read from r that couldn't fit into p yet
 }
 
 func (l *latin1Reader) Read(p []byte) (n int, err error) {
@@ -165,54 +182,40 @@ func (l *latin1Reader) Read(p []byte) (n int, err error) {
 		return 0, nil
 	}
 
-	// We need an internal buffer to read source bytes before expansion.
-	// We read up to len(p)/2 source bytes to guarantee they fit into p after expansion (max 2x or 3x).
-	// Actually, Latin1 to UTF8 is max 2 bytes per char (for 0x80-0xFF).
-
-	// Ensure we have a buffer
-	if l.buf == nil {
-		l.buf = make([]byte, 4096)
+	// If we have pending expanded bytes, satisfy from there first
+	if len(l.pending) > 0 {
+		n = copy(p, l.pending)
+		l.pending = l.pending[n:]
+		return n, nil
 	}
 
-	// Read from source into l.buf
-	// We want to read enough to fill p partially.
-	// We read at most len(p) / 2 bytes from source, or full buffer.
-	readSize := len(p) / 2
-	if readSize == 0 {
-		readSize = 1
-	}
-	if readSize > len(l.buf) {
-		readSize = len(l.buf)
-	}
+	// Read from source
+	// We need a temp buffer.
+	// If we read len(p), and all are special chars (2 bytes utf8), we produce 2*len(p).
+	// So we should only read len(p)/2 if we want to guarantee fitting?
+	// Or we just read into a temp buf, expand into `expanded`, and copy to p + pending.
 
-	rn, rErr := l.r.Read(l.buf[:readSize])
+	tempBuf := make([]byte, len(p))
+	rn, rErr := l.r.Read(tempBuf)
 
-	// Convert l.buf[:rn] to p
-	// Write to p
-	n = 0
+	// Expand
+	var expanded []byte
 	for i := 0; i < rn; i++ {
-		b := l.buf[i]
+		b := tempBuf[i]
 		if b < 0x80 {
-			p[n] = b
-			n++
+			expanded = append(expanded, b)
 		} else {
-			// Convert to UTF-8 (2 bytes)
-			// 0x80-0xFF -> 110xxxxx 10xxxxxx
-			// 0xC2 (11000010) + (b >> 6) ? No.
-			// Latin1 codepoint matches Unicode code point.
-			// For U+0080 to U+07FF:
-			// Byte 1: 110aaaaa -> 0xC0 | (code >> 6)
-			// Byte 2: 10bbbbbb -> 0x80 | (code & 0x3F)
-
-			// Since b is 0x80..0xFF, code is b.
-			// 0x80 >> 6 = 2. 0xC0 | 2 = 0xC2.
-			// 0xFF >> 6 = 3. 0xC0 | 3 = 0xC3.
-
-			p[n] = 0xC0 | (b >> 6)
-			n++
-			p[n] = 0x80 | (b & 0x3F)
-			n++
+			expanded = append(expanded, 0xC0|(b>>6))
+			expanded = append(expanded, 0x80|(b&0x3F))
 		}
+	}
+
+	// Copy to p
+	n = copy(p, expanded)
+
+	// Store rest in pending
+	if n < len(expanded) {
+		l.pending = expanded[n:]
 	}
 
 	return n, rErr
