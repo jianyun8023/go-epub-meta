@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 	"golibri/epub"
 	"io"
@@ -19,6 +20,7 @@ var (
 	metaISBN        string
 	metaASIN        string
 	metaIdentifiers []string
+	metaJSON        bool
 )
 
 func init() {
@@ -30,6 +32,7 @@ func init() {
 	metaCmd.Flags().StringVar(&metaASIN, "asin", "", "Set ASIN identifier")
 	metaCmd.Flags().StringArrayVarP(&metaIdentifiers, "identifier", "i", []string{}, "Set identifier (format: scheme:value, e.g., douban:12345678)")
 	metaCmd.Flags().StringVarP(&metaOutput, "output", "o", "", "Output file path (required for modification)")
+	metaCmd.Flags().BoolVar(&metaJSON, "json", false, "Output metadata in JSON format (compatible with ebook-meta)")
 
 	rootCmd.AddCommand(metaCmd)
 }
@@ -50,7 +53,11 @@ var metaCmd = &cobra.Command{
 
 		// Read Mode
 		if metaTitle == "" && metaAuthor == "" && metaSeries == "" && metaCover == "" && metaISBN == "" && metaASIN == "" && len(metaIdentifiers) == 0 {
-			printMetadata(ep)
+			if metaJSON {
+				printMetadataJSON(ep)
+			} else {
+				printMetadata(ep)
+			}
 			return
 		}
 
@@ -69,8 +76,56 @@ var metaCmd = &cobra.Command{
 			fmt.Printf("Error saving EPUB: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("Saved to %s\n", metaOutput)
+
+		if metaJSON {
+			// If JSON requested after write, we should probably output the NEW metadata
+			// Re-opening might be expensive, so we just use the current state since applyChanges updated it.
+			printMetadataJSON(ep)
+		} else {
+			fmt.Printf("Saved to %s\n", metaOutput)
+		}
 	},
+}
+
+// MetadataJSON represents the JSON output format compatible with ebook-meta
+type MetadataJSON struct {
+	Title       string            `json:"title"`
+	Authors     []string          `json:"authors"`
+	Publisher   string            `json:"publisher,omitempty"`
+	Published   string            `json:"published,omitempty"`
+	Language    string            `json:"language,omitempty"`
+	Series      string            `json:"series,omitempty"`
+	Identifiers map[string]string `json:"identifiers"`
+	Cover       bool              `json:"cover"`
+}
+
+func printMetadataJSON(ep *epub.Reader) {
+	meta := MetadataJSON{
+		Title:       ep.Package.GetTitle(),
+		Authors:     []string{ep.Package.GetAuthor()}, // Simple conversion for now, ideally GetAuthors()
+		Publisher:   ep.Package.GetPublisher(),
+		Published:   ep.Package.GetPublishDate(),
+		Language:    ep.Package.GetLanguage(),
+		Series:      ep.Package.GetSeries(),
+		Identifiers: ep.Package.GetIdentifiers(),
+		Cover:       false,
+	}
+
+	// Fix Authors: if it contains commas, maybe split?
+	// For now, consistent with existing GetAuthor() which returns a single string.
+	// We might want to improve this in the future if multiple creators exist.
+
+	// Check cover
+	_, _, err := ep.GetCoverImage()
+	if err == nil {
+		meta.Cover = true
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(meta); err != nil {
+		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
+	}
 }
 
 func printMetadata(ep *epub.Reader) {

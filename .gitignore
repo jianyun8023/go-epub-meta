@@ -1,0 +1,40 @@
+# Binaries
+golibri
+test-suite
+analyze-results
+compare-meta
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test outputs
+*.csv
+*.out
+coverage.out
+
+# Temporary files
+*.txt
+!THIRD_PARTY_LICENSES.txt
+
+# Go build cache
+.gocache/
+
+# IDE
+.cursor/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary markdown (cleanup candidates)
+COMPARE_FIX.md
+IMPLEMENTATION_COMPLETE.md
+IMPROVEMENT_PLAN.md
+TESTING_SUMMARY.md
+TEST_COVERAGE.md
+TEST_GUIDE.md

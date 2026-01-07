@@ -368,7 +368,12 @@ func parseMetadataFromEtree(elem *etree.Element) Metadata {
 
 	for _, contrib := range elem.SelectElements("contributor") {
 		meta.Contributors = append(meta.Contributors, AuthorMeta{
-			SimpleMeta: SimpleMeta{Value: contrib.Text()},
+			SimpleMeta: SimpleMeta{
+				Value: contrib.Text(),
+				ID:    contrib.SelectAttrValue("id", ""),
+			},
+			FileAs: contrib.SelectAttrValue("file-as", ""),
+			Role:   contrib.SelectAttrValue("role", ""),
 		})
 	}
 

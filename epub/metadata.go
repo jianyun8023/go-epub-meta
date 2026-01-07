@@ -18,10 +18,50 @@ func (pkg *Package) SetTitle(title string) {
 	pkg.Metadata.Titles = []SimpleMeta{{Value: title}}
 }
 
+// GetTitleSort returns the sortable title.
+func (pkg *Package) GetTitleSort() string {
+	for _, m := range pkg.Metadata.Meta {
+		if m.Name == "calibre:title_sort" {
+			return m.Content
+		}
+	}
+	return ""
+}
+
+// SetTitleSort sets the sortable title.
+func (pkg *Package) SetTitleSort(sort string) {
+	newMeta := []Meta{}
+	found := false
+	for _, m := range pkg.Metadata.Meta {
+		if m.Name == "calibre:title_sort" {
+			m.Content = sort
+			newMeta = append(newMeta, m)
+			found = true
+		} else {
+			newMeta = append(newMeta, m)
+		}
+	}
+	if !found {
+		newMeta = append(newMeta, Meta{
+			Name:    "calibre:title_sort",
+			Content: sort,
+		})
+	}
+	pkg.Metadata.Meta = newMeta
+}
+
 // GetAuthor returns the first creator.
 func (pkg *Package) GetAuthor() string {
 	if len(pkg.Metadata.Creators) > 0 {
 		return pkg.Metadata.Creators[0].Value
+	}
+	return ""
+}
+
+// GetAuthorSort returns the sortable author name from the first creator.
+func (pkg *Package) GetAuthorSort() string {
+	if len(pkg.Metadata.Creators) > 0 {
+		return pkg.Metadata.Creators[0].FileAs
 	}
 	return ""
 }
@@ -73,6 +113,16 @@ func (pkg *Package) GetSeries() string {
 	return ""
 }
 
+// GetSeriesIndex returns the series index.
+func (pkg *Package) GetSeriesIndex() string {
+	for _, m := range pkg.Metadata.Meta {
+		if m.Name == "calibre:series_index" {
+			return m.Content
+		}
+	}
+	return ""
+}
+
 // SetSeries sets the series using Calibre meta tag.
 func (pkg *Package) SetSeries(series string) {
 	// Remove existing series tag
@@ -93,6 +143,28 @@ func (pkg *Package) SetSeries(series string) {
 		newMeta = append(newMeta, Meta{
 			Name:    "calibre:series",
 			Content: series,
+		})
+	}
+	pkg.Metadata.Meta = newMeta
+}
+
+// SetSeriesIndex sets the series index using Calibre meta tag.
+func (pkg *Package) SetSeriesIndex(index string) {
+	newMeta := []Meta{}
+	found := false
+	for _, m := range pkg.Metadata.Meta {
+		if m.Name == "calibre:series_index" {
+			m.Content = index
+			newMeta = append(newMeta, m)
+			found = true
+		} else {
+			newMeta = append(newMeta, m)
+		}
+	}
+	if !found {
+		newMeta = append(newMeta, Meta{
+			Name:    "calibre:series_index",
+			Content: index,
 		})
 	}
 	pkg.Metadata.Meta = newMeta
@@ -285,6 +357,23 @@ func (pkg *Package) SetASIN(asin string) {
 func (pkg *Package) GetPublisher() string {
 	if len(pkg.Metadata.Publishers) > 0 {
 		return pkg.Metadata.Publishers[0].Value
+	}
+	return ""
+}
+
+// GetProducer returns the book producer (generator).
+func (pkg *Package) GetProducer() string {
+	// Check contributors with role 'bkp'
+	for _, c := range pkg.Metadata.Contributors {
+		if c.Role == "bkp" {
+			return c.Value
+		}
+	}
+	// Check meta generator
+	for _, m := range pkg.Metadata.Meta {
+		if m.Name == "generator" {
+			return m.Content
+		}
 	}
 	return ""
 }
