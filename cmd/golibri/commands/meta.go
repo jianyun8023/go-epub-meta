@@ -96,24 +96,27 @@ type MetadataJSON struct {
 	Language    string            `json:"language,omitempty"`
 	Series      string            `json:"series,omitempty"`
 	Identifiers map[string]string `json:"identifiers"`
+	Producer    string            `json:"producer,omitempty"`
 	Cover       bool              `json:"cover"`
 }
 
 func printMetadataJSON(ep *epub.Reader) {
 	meta := MetadataJSON{
 		Title:       ep.Package.GetTitle(),
-		Authors:     []string{ep.Package.GetAuthor()}, // Simple conversion for now, ideally GetAuthors()
+		Authors:     ep.Package.GetAuthors(),
 		Publisher:   ep.Package.GetPublisher(),
 		Published:   ep.Package.GetPublishDate(),
 		Language:    ep.Package.GetLanguage(),
 		Series:      ep.Package.GetSeries(),
 		Identifiers: ep.Package.GetIdentifiers(),
+		Producer:    ep.Package.GetProducer(),
 		Cover:       false,
 	}
 
-	// Fix Authors: if it contains commas, maybe split?
-	// For now, consistent with existing GetAuthor() which returns a single string.
-	// We might want to improve this in the future if multiple creators exist.
+	// Ensure Authors is not nil for JSON output
+	if meta.Authors == nil {
+		meta.Authors = []string{}
+	}
 
 	// Check cover
 	_, _, err := ep.GetCoverImage()
@@ -131,7 +134,14 @@ func printMetadataJSON(ep *epub.Reader) {
 func printMetadata(ep *epub.Reader) {
 	fmt.Println("--- Metadata ---")
 	fmt.Printf("Title:       %s\n", ep.Package.GetTitle())
-	fmt.Printf("Author:      %s\n", ep.Package.GetAuthor())
+
+	// Display authors (joined with ", " on a single line)
+	authors := ep.Package.GetAuthors()
+	if len(authors) > 0 {
+		fmt.Printf("Author:      %s\n", strings.Join(authors, ", "))
+	} else {
+		fmt.Printf("Author:      \n")
+	}
 
 	// Display publisher if available
 	if publisher := ep.Package.GetPublisher(); publisher != "" {
@@ -176,6 +186,11 @@ func printMetadata(ep *epub.Reader) {
 			first = false
 		}
 		fmt.Println()
+	}
+
+	// Display producer/generator if available
+	if producer := ep.Package.GetProducer(); producer != "" {
+		fmt.Printf("Producer:    %s\n", producer)
 	}
 
 	_, _, err := ep.GetCoverImage()

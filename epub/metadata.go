@@ -58,6 +58,108 @@ func (pkg *Package) GetAuthor() string {
 	return ""
 }
 
+// GetAuthors returns all creators as a list of author names.
+// It handles multiple dc:creator elements and also attempts to split
+// single creator values that contain multiple authors separated by
+// common delimiters (&, 、, and, etc.).
+func (pkg *Package) GetAuthors() []string {
+	var authors []string
+	for _, creator := range pkg.Metadata.Creators {
+		parsed := parseAuthorString(creator.Value)
+		authors = append(authors, parsed...)
+	}
+	// Deduplicate while preserving order
+	return deduplicateStrings(authors)
+}
+
+// parseAuthorString attempts to split a single author string that may contain
+// multiple authors separated by common delimiters.
+// Safe delimiters (always split): &, 、, ;, " and "
+// Unsafe delimiter (comma): only split if not "Last, First" format
+func parseAuthorString(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+
+	// Try safe delimiters first (these rarely appear in single author names)
+	// Order matters: try longer patterns first
+	safeDelimiters := []string{
+		" & ",   // English ampersand with spaces
+		"&",     // Ampersand without spaces
+		"、",     // Chinese enumeration comma (顿号)
+		" and ", // English "and" (case insensitive handled below)
+		" AND ",
+		"；", // Chinese semicolon
+		";", // Semicolon
+	}
+
+	for _, delim := range safeDelimiters {
+		if strings.Contains(s, delim) {
+			parts := strings.Split(s, delim)
+			var result []string
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					result = append(result, p)
+				}
+			}
+			if len(result) > 1 {
+				return result
+			}
+		}
+	}
+
+	// Handle comma carefully - avoid splitting "Last, First" format
+	// Heuristic: if comma exists and there are more than 2 parts,
+	// or if the parts don't look like "Last, First" (first part has space),
+	// then it's likely multiple authors
+	if strings.Contains(s, ",") || strings.Contains(s, "，") {
+		// Use both English and Chinese comma
+		normalized := strings.ReplaceAll(s, "，", ",")
+		parts := strings.Split(normalized, ",")
+
+		if len(parts) >= 2 {
+			// Check if it looks like "Last, First" format (exactly 2 parts, no space in first part)
+			firstPart := strings.TrimSpace(parts[0])
+			secondPart := strings.TrimSpace(parts[1])
+
+			// If first part contains space OR there are more than 2 parts,
+			// treat as multiple authors
+			isMultipleAuthors := len(parts) > 2 ||
+				strings.Contains(firstPart, " ") ||
+				(len(parts) == 2 && strings.Contains(secondPart, " ") && !strings.Contains(firstPart, " "))
+
+			if isMultipleAuthors && len(parts) > 2 {
+				var result []string
+				for _, p := range parts {
+					p = strings.TrimSpace(p)
+					if p != "" {
+						result = append(result, p)
+					}
+				}
+				return result
+			}
+		}
+	}
+
+	// No splitting needed
+	return []string{s}
+}
+
+// deduplicateStrings removes duplicates while preserving order.
+func deduplicateStrings(items []string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, item := range items {
+		if !seen[item] {
+			seen[item] = true
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 // GetAuthorSort returns the sortable author name from the first creator.
 func (pkg *Package) GetAuthorSort() string {
 	if len(pkg.Metadata.Creators) > 0 {

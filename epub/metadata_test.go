@@ -171,6 +171,210 @@ func TestSetAuthor(t *testing.T) {
 }
 
 // =============================================================================
+// GetAuthors Tests (Multiple Authors)
+// =============================================================================
+
+func TestGetAuthors_SingleCreator(t *testing.T) {
+	pkg := createTestPackage()
+	authors := pkg.GetAuthors()
+	if len(authors) != 1 || authors[0] != "Test Author" {
+		t.Errorf("Expected ['Test Author'], got %v", authors)
+	}
+}
+
+func TestGetAuthors_MultipleCreators(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Metadata.Creators = []AuthorMeta{
+		{SimpleMeta: SimpleMeta{Value: "Author One"}},
+		{SimpleMeta: SimpleMeta{Value: "Author Two"}},
+		{SimpleMeta: SimpleMeta{Value: "Author Three"}},
+	}
+	authors := pkg.GetAuthors()
+	expected := []string{"Author One", "Author Two", "Author Three"}
+	if len(authors) != 3 {
+		t.Errorf("Expected 3 authors, got %d", len(authors))
+	}
+	for i, exp := range expected {
+		if authors[i] != exp {
+			t.Errorf("Expected authors[%d]='%s', got '%s'", i, exp, authors[i])
+		}
+	}
+}
+
+func TestGetAuthors_Empty(t *testing.T) {
+	pkg := createEmptyPackage()
+	authors := pkg.GetAuthors()
+	if len(authors) != 0 {
+		t.Errorf("Expected empty authors, got %v", authors)
+	}
+}
+
+func TestGetAuthors_Deduplicate(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Metadata.Creators = []AuthorMeta{
+		{SimpleMeta: SimpleMeta{Value: "Same Author"}},
+		{SimpleMeta: SimpleMeta{Value: "Same Author"}},
+	}
+	authors := pkg.GetAuthors()
+	if len(authors) != 1 || authors[0] != "Same Author" {
+		t.Errorf("Expected deduplication, got %v", authors)
+	}
+}
+
+// =============================================================================
+// parseAuthorString Tests (Single creator with multiple authors)
+// =============================================================================
+
+func TestParseAuthorString_Ampersand(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"张三 & 李四", []string{"张三", "李四"}},
+		{"Author A&Author B", []string{"Author A", "Author B"}},
+		{"A & B & C", []string{"A", "B", "C"}},
+	}
+	for _, tc := range tests {
+		result := parseAuthorString(tc.input)
+		if len(result) != len(tc.expected) {
+			t.Errorf("parseAuthorString(%q): expected %v, got %v", tc.input, tc.expected, result)
+			continue
+		}
+		for i := range tc.expected {
+			if result[i] != tc.expected[i] {
+				t.Errorf("parseAuthorString(%q)[%d]: expected %q, got %q", tc.input, i, tc.expected[i], result[i])
+			}
+		}
+	}
+}
+
+func TestParseAuthorString_ChineseComma(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"张三、李四", []string{"张三", "李四"}},
+		{"作者A、作者B、作者C", []string{"作者A", "作者B", "作者C"}},
+	}
+	for _, tc := range tests {
+		result := parseAuthorString(tc.input)
+		if len(result) != len(tc.expected) {
+			t.Errorf("parseAuthorString(%q): expected %v, got %v", tc.input, tc.expected, result)
+			continue
+		}
+		for i := range tc.expected {
+			if result[i] != tc.expected[i] {
+				t.Errorf("parseAuthorString(%q)[%d]: expected %q, got %q", tc.input, i, tc.expected[i], result[i])
+			}
+		}
+	}
+}
+
+func TestParseAuthorString_And(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"John and Jane", []string{"John", "Jane"}},
+		{"A and B and C", []string{"A", "B", "C"}},
+	}
+	for _, tc := range tests {
+		result := parseAuthorString(tc.input)
+		if len(result) != len(tc.expected) {
+			t.Errorf("parseAuthorString(%q): expected %v, got %v", tc.input, tc.expected, result)
+			continue
+		}
+		for i := range tc.expected {
+			if result[i] != tc.expected[i] {
+				t.Errorf("parseAuthorString(%q)[%d]: expected %q, got %q", tc.input, i, tc.expected[i], result[i])
+			}
+		}
+	}
+}
+
+func TestParseAuthorString_Semicolon(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"Author A; Author B", []string{"Author A", "Author B"}},
+		{"张三；李四", []string{"张三", "李四"}},
+	}
+	for _, tc := range tests {
+		result := parseAuthorString(tc.input)
+		if len(result) != len(tc.expected) {
+			t.Errorf("parseAuthorString(%q): expected %v, got %v", tc.input, tc.expected, result)
+			continue
+		}
+		for i := range tc.expected {
+			if result[i] != tc.expected[i] {
+				t.Errorf("parseAuthorString(%q)[%d]: expected %q, got %q", tc.input, i, tc.expected[i], result[i])
+			}
+		}
+	}
+}
+
+func TestParseAuthorString_NoSplit(t *testing.T) {
+	// These should NOT be split
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"Single Author", []string{"Single Author"}},
+		{"黄仁宇", []string{"黄仁宇"}},
+		{"Doe, John", []string{"Doe, John"}}, // Last, First format - should not split
+		{"张三", []string{"张三"}},
+	}
+	for _, tc := range tests {
+		result := parseAuthorString(tc.input)
+		if len(result) != len(tc.expected) {
+			t.Errorf("parseAuthorString(%q): expected %v, got %v", tc.input, tc.expected, result)
+			continue
+		}
+		for i := range tc.expected {
+			if result[i] != tc.expected[i] {
+				t.Errorf("parseAuthorString(%q)[%d]: expected %q, got %q", tc.input, i, tc.expected[i], result[i])
+			}
+		}
+	}
+}
+
+func TestParseAuthorString_MultipleCommas(t *testing.T) {
+	// Multiple commas should be split
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"A, B, C", []string{"A", "B", "C"}},
+		{"张三, 李四, 王五", []string{"张三", "李四", "王五"}},
+	}
+	for _, tc := range tests {
+		result := parseAuthorString(tc.input)
+		if len(result) != len(tc.expected) {
+			t.Errorf("parseAuthorString(%q): expected %v, got %v", tc.input, tc.expected, result)
+			continue
+		}
+		for i := range tc.expected {
+			if result[i] != tc.expected[i] {
+				t.Errorf("parseAuthorString(%q)[%d]: expected %q, got %q", tc.input, i, tc.expected[i], result[i])
+			}
+		}
+	}
+}
+
+func TestParseAuthorString_Empty(t *testing.T) {
+	result := parseAuthorString("")
+	if result != nil {
+		t.Errorf("Expected nil for empty string, got %v", result)
+	}
+
+	result = parseAuthorString("   ")
+	if result != nil {
+		t.Errorf("Expected nil for whitespace string, got %v", result)
+	}
+}
+
+// =============================================================================
 // Description Tests
 // =============================================================================
 
@@ -587,9 +791,9 @@ func TestIsISBN10(t *testing.T) {
 		{"012345678x", true},
 		{"0-12-345678-9", true},
 		{"0 12 345678 9", true},
-		{"123456789", false},  // Too short
+		{"123456789", false},   // Too short
 		{"12345678901", false}, // Too long
-		{"012345678A", false}, // Invalid char
+		{"012345678A", false},  // Invalid char
 	}
 
 	for _, tc := range tests {
@@ -609,8 +813,8 @@ func TestIsISBN13(t *testing.T) {
 		{"9790123456789", true},
 		{"978-0-12-345678-9", true},
 		{"979 0 12 345678 9", true},
-		{"1234567890123", false}, // Doesn't start with 978/979
-		{"978012345678", false},  // Too short
+		{"1234567890123", false},  // Doesn't start with 978/979
+		{"978012345678", false},   // Too short
 		{"97801234567890", false}, // Too long
 	}
 
@@ -674,7 +878,7 @@ func TestMultipleIdentifiers(t *testing.T) {
 	}
 
 	ids := pkg.GetIdentifiers()
-	
+
 	// UUID should be filtered
 	if _, ok := ids["uuid"]; ok {
 		t.Error("UUID should be filtered")
@@ -715,12 +919,12 @@ func TestSpecialCharactersInAuthor(t *testing.T) {
 
 func TestEmptyStringValues(t *testing.T) {
 	pkg := createEmptyPackage()
-	
+
 	// Setting empty strings should work
 	pkg.SetTitle("")
 	pkg.SetAuthor("")
 	pkg.SetSeries("")
-	
+
 	if pkg.GetTitle() != "" {
 		t.Errorf("Expected empty title, got '%s'", pkg.GetTitle())
 	}
@@ -734,7 +938,7 @@ func TestEmptyStringValues(t *testing.T) {
 
 func TestWhitespaceHandling(t *testing.T) {
 	pkg := createEmptyPackage()
-	
+
 	// Whitespace should be preserved (not trimmed) in values
 	pkg.SetTitle("  Title with Spaces  ")
 	if pkg.GetTitle() != "  Title with Spaces  " {
