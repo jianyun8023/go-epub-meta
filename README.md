@@ -35,12 +35,34 @@ go build -o golibri ./cmd/golibri/
 #### 2. 修改元数据
 
 ```bash
+# 默认：直接修改原文件（原子写入，安全覆盖）
+./golibri meta book.epub \
+  -t "新标题" \
+  -a "新作者" \
+  -s "新系列"
+
+# 也可以指定输出到新文件
 ./golibri meta book.epub \
   -t "新标题" \
   -a "新作者" \
   -s "新系列" \
   -o output.epub
 ```
+
+支持写入的更多字段：
+
+```bash
+./golibri meta book.epub \
+  --publisher "出版社" \
+  --date "2025-01-07" \
+  --language "zh-CN" \
+  --tags "科幻,历史,文学" \
+  --comments "简介/描述文本" \
+  --series-index "3" \
+  --rating 4
+```
+
+注：`--series-index` / `--rating` 为 **Calibre 扩展字段**（存储在 OPF 的 `meta name="calibre:*"`）；其余字段遵循 EPUB/Dublin Core 标准。
 
 #### 3. JSON 输出（新功能）
 
@@ -55,11 +77,16 @@ go build -o golibri ./cmd/golibri/
 ```json
 {
   "title": "示例书籍",
-  "authors": ["作者名"],
+  "authors": ["作者甲", "作者乙"],
   "publisher": "出版社",
   "published": "2024-01-01",
   "language": "zh",
   "series": "系列名",
+  "series_index": "3",
+  "tags": ["科幻", "历史", "文学"],
+  "comments": "简介/描述（JSON 保留原始内容，可能包含转义的 HTML）",
+  "rating": 4,
+  "producer": "calibre (7.21.0) [https://calibre-ebook.com]",
   "identifiers": {
     "isbn": "9781234567890",
     "calibre": "123"
@@ -71,6 +98,9 @@ go build -o golibri ./cmd/golibri/
 #### 4. 替换封面
 
 ```bash
+./golibri meta book.epub -c cover.jpg
+
+# 或输出到新文件
 ./golibri meta book.epub -c cover.jpg -o output.epub
 ```
 
@@ -147,6 +177,7 @@ package main
 
 import (
     "fmt"
+    "strings"
     "github.com/jianyun8023/go-epub-meta/epub"
 )
 
@@ -160,7 +191,7 @@ func main() {
 
     // 2. 读取元数据
     fmt.Println("标题:", book.Package.GetTitle())
-    fmt.Println("作者:", book.Package.GetAuthor())
+    fmt.Println("作者:", strings.Join(book.Package.GetAuthors(), ", "))
 
     // 3. 修改元数据
     book.Package.SetTitle("新标题")
@@ -178,8 +209,10 @@ func main() {
 
 - ✅ **文本格式输出**：人类可读的元数据展示
 - ✅ **JSON 格式输出**：与 ebook-meta 兼容的 JSON 格式（`--json`）
-- ✅ **完整字段支持**：Title, Author, Publisher, Published, Language, Series, Identifiers, Cover
+- ✅ **完整字段支持**：Title, Authors, Publisher, Published, Language, Series, SeriesIndex, Tags, Comments, Rating, Producer, Identifiers, Cover
 - ✅ **Identifier 智能识别**：支持 ISBN, ASIN, Calibre ID 等多种格式
+- ✅ **多作者支持**：EPUB2/EPUB3 多 `dc:creator`，以及单字段内常见分隔符智能拆分
+- ✅ **原子写入**：不指定 `-o` 时直接修改原文件，使用临时文件 + 重命名保证安全
 
 ### 测试与质量保证
 
