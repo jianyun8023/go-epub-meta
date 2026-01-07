@@ -6,6 +6,7 @@ import (
 	"golibri/epub"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -95,8 +96,12 @@ type MetadataJSON struct {
 	Published   string            `json:"published,omitempty"`
 	Language    string            `json:"language,omitempty"`
 	Series      string            `json:"series,omitempty"`
+	SeriesIndex string            `json:"series_index,omitempty"`
+	Tags        []string          `json:"tags,omitempty"`
+	Rating      int               `json:"rating,omitempty"`
 	Identifiers map[string]string `json:"identifiers"`
 	Producer    string            `json:"producer,omitempty"`
+	Comments    string            `json:"comments,omitempty"`
 	Cover       bool              `json:"cover"`
 }
 
@@ -108,8 +113,12 @@ func printMetadataJSON(ep *epub.Reader) {
 		Published:   ep.Package.GetPublishDate(),
 		Language:    ep.Package.GetLanguage(),
 		Series:      ep.Package.GetSeries(),
+		SeriesIndex: ep.Package.GetSeriesIndex(),
+		Tags:        ep.Package.GetSubjects(),
+		Rating:      ep.Package.GetRating(),
 		Identifiers: ep.Package.GetIdentifiers(),
 		Producer:    ep.Package.GetProducer(),
+		Comments:    ep.Package.GetDescription(),
 		Cover:       false,
 	}
 
@@ -155,9 +164,23 @@ func printMetadata(ep *epub.Reader) {
 
 	fmt.Printf("Language:    %s\n", ep.Package.GetLanguage())
 
-	// Display series if available
+	// Display series with index if available (format: "Series Name #1")
 	if series := ep.Package.GetSeries(); series != "" {
-		fmt.Printf("Series:      %s\n", series)
+		if idx := ep.Package.GetSeriesIndex(); idx != "" {
+			fmt.Printf("Series:      %s #%s\n", series, idx)
+		} else {
+			fmt.Printf("Series:      %s\n", series)
+		}
+	}
+
+	// Display tags/subjects if available
+	if tags := ep.Package.GetSubjects(); len(tags) > 0 {
+		fmt.Printf("Tags:        %s\n", strings.Join(tags, ", "))
+	}
+
+	// Display rating if available (0-5 scale)
+	if rating := ep.Package.GetRating(); rating > 0 {
+		fmt.Printf("Rating:      %d\n", rating)
 	}
 
 	// Display identifiers (ISBN, ASIN, etc.)
@@ -193,12 +216,46 @@ func printMetadata(ep *epub.Reader) {
 		fmt.Printf("Producer:    %s\n", producer)
 	}
 
+	// Display description/comments if available (strip HTML, truncate for readability)
+	if desc := ep.Package.GetDescription(); desc != "" {
+		plainDesc := stripHTML(desc)
+		if plainDesc != "" {
+			fmt.Printf("Comments:    %s\n", truncate(plainDesc, 200))
+		}
+	}
+
 	_, _, err := ep.GetCoverImage()
 	if err == nil {
 		fmt.Println("Cover:       Found")
 	} else {
 		fmt.Println("Cover:       Not Found")
 	}
+}
+
+// stripHTML removes HTML tags from a string for plain text display.
+func stripHTML(s string) string {
+	// Remove HTML tags
+	re := regexp.MustCompile(`<[^>]*>`)
+	s = re.ReplaceAllString(s, " ")
+	// Decode common HTML entities
+	s = strings.ReplaceAll(s, "&nbsp;", " ")
+	s = strings.ReplaceAll(s, "&amp;", "&")
+	s = strings.ReplaceAll(s, "&lt;", "<")
+	s = strings.ReplaceAll(s, "&gt;", ">")
+	s = strings.ReplaceAll(s, "&quot;", `"`)
+	s = strings.ReplaceAll(s, "&#39;", "'")
+	// Normalize whitespace
+	s = regexp.MustCompile(`\s+`).ReplaceAllString(s, " ")
+	return strings.TrimSpace(s)
+}
+
+// truncate truncates a string to maxLen characters, adding "..." if truncated.
+func truncate(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen-3]) + "..."
 }
 
 func applyChanges(ep *epub.Reader) error {

@@ -1,6 +1,7 @@
 package epub
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -270,6 +271,37 @@ func (pkg *Package) SetSeriesIndex(index string) {
 		})
 	}
 	pkg.Metadata.Meta = newMeta
+}
+
+// GetRating returns the book rating (0-5 scale, compatible with ebook-meta).
+// Calibre stores rating as 0-10, this converts to 0-5.
+func (pkg *Package) GetRating() int {
+	for _, m := range pkg.Metadata.Meta {
+		if m.Name == "calibre:rating" {
+			// Parse as integer, Calibre uses 0-10 scale
+			var rating int
+			if _, err := fmt.Sscanf(m.Content, "%d", &rating); err == nil {
+				// Convert 0-10 to 0-5 (divide by 2)
+				return rating / 2
+			}
+			// Try parsing as float (e.g., "8.0")
+			var ratingFloat float64
+			if _, err := fmt.Sscanf(m.Content, "%f", &ratingFloat); err == nil {
+				return int(ratingFloat) / 2
+			}
+		}
+	}
+	return 0
+}
+
+// GetRatingRaw returns the raw rating value as stored (0-10 for Calibre).
+func (pkg *Package) GetRatingRaw() string {
+	for _, m := range pkg.Metadata.Meta {
+		if m.Name == "calibre:rating" {
+			return m.Content
+		}
+	}
+	return ""
 }
 
 // GetSubjects returns a list of tags.
