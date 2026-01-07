@@ -304,6 +304,36 @@ func (pkg *Package) GetRatingRaw() string {
 	return ""
 }
 
+// SetRating sets the rating (0-5 scale, converted to Calibre's 0-10 scale).
+// Values outside 0-5 are clamped.
+func (pkg *Package) SetRating(rating int) {
+	// Clamp to 0-5 range
+	if rating < 0 {
+		rating = 0
+	}
+	if rating > 5 {
+		rating = 5
+	}
+
+	// Convert to Calibre's 0-10 scale
+	calibreRating := fmt.Sprintf("%d", rating*2)
+
+	// Update or add calibre:rating meta
+	newMeta := []Meta{}
+	found := false
+	for _, m := range pkg.Metadata.Meta {
+		if m.Name == "calibre:rating" {
+			m.Content = calibreRating
+			found = true
+		}
+		newMeta = append(newMeta, m)
+	}
+	if !found {
+		newMeta = append(newMeta, Meta{Name: "calibre:rating", Content: calibreRating})
+	}
+	pkg.Metadata.Meta = newMeta
+}
+
 // GetSubjects returns a list of tags.
 func (pkg *Package) GetSubjects() []string {
 	var subjects []string

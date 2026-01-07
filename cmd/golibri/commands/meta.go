@@ -22,6 +22,14 @@ var (
 	metaASIN        string
 	metaIdentifiers []string
 	metaJSON        bool
+	// New write flags
+	metaPublisher   string
+	metaDate        string
+	metaLanguage    string
+	metaTags        string
+	metaComments    string
+	metaSeriesIndex string
+	metaRating      int
 )
 
 func init() {
@@ -32,8 +40,16 @@ func init() {
 	metaCmd.Flags().StringVar(&metaISBN, "isbn", "", "Set ISBN identifier")
 	metaCmd.Flags().StringVar(&metaASIN, "asin", "", "Set ASIN identifier")
 	metaCmd.Flags().StringArrayVarP(&metaIdentifiers, "identifier", "i", []string{}, "Set identifier (format: scheme:value, e.g., douban:12345678)")
-	metaCmd.Flags().StringVarP(&metaOutput, "output", "o", "", "Output file path (required for modification)")
+	metaCmd.Flags().StringVarP(&metaOutput, "output", "o", "", "Output file path (default: modify in-place)")
 	metaCmd.Flags().BoolVar(&metaJSON, "json", false, "Output metadata in JSON format (compatible with ebook-meta)")
+	// New write flags
+	metaCmd.Flags().StringVar(&metaPublisher, "publisher", "", "Set publisher")
+	metaCmd.Flags().StringVar(&metaDate, "date", "", "Set publication date")
+	metaCmd.Flags().StringVar(&metaLanguage, "language", "", "Set language (e.g., zh, en, zh-CN)")
+	metaCmd.Flags().StringVar(&metaTags, "tags", "", "Set tags/subjects (comma-separated)")
+	metaCmd.Flags().StringVar(&metaComments, "comments", "", "Set description/comments")
+	metaCmd.Flags().StringVar(&metaSeriesIndex, "series-index", "", "Set series index")
+	metaCmd.Flags().IntVar(&metaRating, "rating", -1, "Set rating (0-5, Calibre extension)")
 
 	rootCmd.AddCommand(metaCmd)
 }
@@ -52,8 +68,12 @@ var metaCmd = &cobra.Command{
 		}
 		defer ep.Close()
 
-		// Read Mode
-		if metaTitle == "" && metaAuthor == "" && metaSeries == "" && metaCover == "" && metaISBN == "" && metaASIN == "" && len(metaIdentifiers) == 0 {
+		// Read Mode - check if any write flag is set
+		isWriteMode := metaTitle != "" || metaAuthor != "" || metaSeries != "" || metaCover != "" ||
+			metaISBN != "" || metaASIN != "" || len(metaIdentifiers) > 0 ||
+			metaPublisher != "" || metaDate != "" || metaLanguage != "" ||
+			metaTags != "" || metaComments != "" || metaSeriesIndex != "" || metaRating >= 0
+		if !isWriteMode {
 			if metaJSON {
 				printMetadataJSON(ep)
 			} else {
@@ -63,9 +83,10 @@ var metaCmd = &cobra.Command{
 		}
 
 		// Write Mode
-		if metaOutput == "" {
-			fmt.Println("Error: -o (output) is required when modifying metadata.")
-			os.Exit(1)
+		// If no output specified, modify in-place
+		outputPath := metaOutput
+		if outputPath == "" {
+			outputPath = inputFile
 		}
 
 		if err := applyChanges(ep); err != nil {
@@ -73,7 +94,7 @@ var metaCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		if err := ep.Save(metaOutput); err != nil {
+		if err := ep.Save(outputPath); err != nil {
 			fmt.Printf("Error saving EPUB: %v\n", err)
 			os.Exit(1)
 		}
@@ -83,7 +104,7 @@ var metaCmd = &cobra.Command{
 			// Re-opening might be expensive, so we just use the current state since applyChanges updated it.
 			printMetadataJSON(ep)
 		} else {
-			fmt.Printf("Saved to %s\n", metaOutput)
+			fmt.Printf("Saved to %s\n", outputPath)
 		}
 	},
 }
@@ -309,5 +330,34 @@ func applyChanges(ep *epub.Reader) error {
 
 		ep.SetCover(data, mime)
 	}
+
+	// New write fields
+	if metaPublisher != "" {
+		ep.Package.SetPublisher(metaPublisher)
+	}
+	if metaDate != "" {
+		ep.Package.SetPublishDate(metaDate)
+	}
+	if metaLanguage != "" {
+		ep.Package.SetLanguage(metaLanguage)
+	}
+	if metaTags != "" {
+		// Parse comma-separated tags
+		tags := strings.Split(metaTags, ",")
+		for i := range tags {
+			tags[i] = strings.TrimSpace(tags[i])
+		}
+		ep.Package.SetSubjects(tags)
+	}
+	if metaComments != "" {
+		ep.Package.SetDescription(metaComments)
+	}
+	if metaSeriesIndex != "" {
+		ep.Package.SetSeriesIndex(metaSeriesIndex)
+	}
+	if metaRating >= 0 {
+		ep.Package.SetRating(metaRating)
+	}
+
 	return nil
 }

@@ -945,3 +945,79 @@ func TestWhitespaceHandling(t *testing.T) {
 		t.Errorf("Whitespace not preserved: got '%s'", pkg.GetTitle())
 	}
 }
+
+// =============================================================================
+// SetRating Tests (Calibre Extension)
+// =============================================================================
+
+func TestSetRating_BasicValues(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       int
+		expectedGet int
+		expectedRaw string
+	}{
+		{"Rating 0", 0, 0, "0"},
+		{"Rating 1", 1, 1, "2"},
+		{"Rating 2", 2, 2, "4"},
+		{"Rating 3", 3, 3, "6"},
+		{"Rating 4", 4, 4, "8"},
+		{"Rating 5", 5, 5, "10"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pkg := createEmptyPackage()
+			pkg.SetRating(tt.input)
+
+			if got := pkg.GetRating(); got != tt.expectedGet {
+				t.Errorf("GetRating() = %d, want %d", got, tt.expectedGet)
+			}
+			if got := pkg.GetRatingRaw(); got != tt.expectedRaw {
+				t.Errorf("GetRatingRaw() = %s, want %s", got, tt.expectedRaw)
+			}
+		})
+	}
+}
+
+func TestSetRating_UpdateExisting(t *testing.T) {
+	pkg := createEmptyPackage()
+
+	// Set initial rating
+	pkg.SetRating(3)
+	if pkg.GetRating() != 3 {
+		t.Errorf("Initial rating: got %d, want 3", pkg.GetRating())
+	}
+
+	// Update rating
+	pkg.SetRating(5)
+	if pkg.GetRating() != 5 {
+		t.Errorf("Updated rating: got %d, want 5", pkg.GetRating())
+	}
+
+	// Verify only one calibre:rating meta exists
+	count := 0
+	for _, m := range pkg.Metadata.Meta {
+		if m.Name == "calibre:rating" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 calibre:rating meta, got %d", count)
+	}
+}
+
+func TestSetRating_ClampValues(t *testing.T) {
+	pkg := createEmptyPackage()
+
+	// Values outside 0-5 should be clamped
+	pkg.SetRating(-1)
+	if pkg.GetRating() != 0 {
+		t.Errorf("Negative rating should clamp to 0, got %d", pkg.GetRating())
+	}
+
+	pkg.SetRating(10)
+	if pkg.GetRating() != 5 {
+		t.Errorf("Rating > 5 should clamp to 5, got %d", pkg.GetRating())
+	}
+}
