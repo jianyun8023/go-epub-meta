@@ -14,18 +14,52 @@ const (
 // Package is the root element of the OPF file.
 // It supports both EPUB 2.0 and EPUB 3.x attributes.
 type Package struct {
-	XMLName          xml.Name  `xml:"http://www.idpf.org/2007/opf package"`
-	Version          string    `xml:"version,attr"`
-	UniqueIdentifier string    `xml:"unique-identifier,attr"`
-	Prefix           string    `xml:"prefix,attr,omitempty"` // EPUB 3
-	Xmlns            string    `xml:"xmlns,attr,omitempty"`
-	Dir              string    `xml:"dir,attr,omitempty"` // text direction
-	Id               string    `xml:"id,attr,omitempty"`
+	XMLName          xml.Name `xml:"http://www.idpf.org/2007/opf package"`
+	Version          string   `xml:"version,attr"`
+	UniqueIdentifier string   `xml:"unique-identifier,attr"`
+	Prefix           string   `xml:"prefix,attr,omitempty"` // EPUB 3
+	Xmlns            string   `xml:"xmlns,attr,omitempty"`
+	Dir              string   `xml:"dir,attr,omitempty"` // text direction
+	Id               string   `xml:"id,attr,omitempty"`
 
 	Metadata Metadata `xml:"metadata"`
 	Manifest Manifest `xml:"manifest"`
 	Spine    Spine    `xml:"spine"`
 	Guide    *Guide   `xml:"guide,omitempty"` // Deprecated in EPUB 3, but widely used
+}
+
+// PackageLoose is used for parsing OPF files without namespace constraints.
+// This improves compatibility with malformed EPUB files.
+type PackageLoose struct {
+	XMLName          xml.Name `xml:"package"`
+	Version          string   `xml:"version,attr"`
+	UniqueIdentifier string   `xml:"unique-identifier,attr"`
+	Prefix           string   `xml:"prefix,attr,omitempty"`
+	Xmlns            string   `xml:"xmlns,attr,omitempty"`
+	Dir              string   `xml:"dir,attr,omitempty"`
+	Id               string   `xml:"id,attr,omitempty"`
+
+	Metadata Metadata `xml:"metadata"`
+	Manifest Manifest `xml:"manifest"`
+	Spine    Spine    `xml:"spine"`
+	Guide    *Guide   `xml:"guide,omitempty"`
+}
+
+// ToPackage converts a PackageLoose to a standard Package.
+func (pl *PackageLoose) ToPackage() Package {
+	return Package{
+		XMLName:          xml.Name{Space: NsOPF, Local: "package"},
+		Version:          pl.Version,
+		UniqueIdentifier: pl.UniqueIdentifier,
+		Prefix:           pl.Prefix,
+		Xmlns:            pl.Xmlns,
+		Dir:              pl.Dir,
+		Id:               pl.Id,
+		Metadata:         pl.Metadata,
+		Manifest:         pl.Manifest,
+		Spine:            pl.Spine,
+		Guide:            pl.Guide,
+	}
 }
 
 // Metadata contains publication metadata.
@@ -113,9 +147,9 @@ type Item struct {
 
 // Spine defines the reading order.
 type Spine struct {
-	Toc      string     `xml:"toc,attr,omitempty"` // EPUB 2 NCX reference
-	PageProg string     `xml:"page-progression-direction,attr,omitempty"`
-	ItemRefs []ItemRef  `xml:"itemref"`
+	Toc      string    `xml:"toc,attr,omitempty"` // EPUB 2 NCX reference
+	PageProg string    `xml:"page-progression-direction,attr,omitempty"`
+	ItemRefs []ItemRef `xml:"itemref"`
 }
 
 type ItemRef struct {

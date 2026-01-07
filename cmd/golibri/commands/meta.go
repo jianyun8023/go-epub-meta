@@ -11,11 +11,14 @@ import (
 )
 
 var (
-	metaTitle  string
-	metaAuthor string
-	metaSeries string
-	metaCover  string
-	metaOutput string
+	metaTitle       string
+	metaAuthor      string
+	metaSeries      string
+	metaCover       string
+	metaOutput      string
+	metaISBN        string
+	metaASIN        string
+	metaIdentifiers []string
 )
 
 func init() {
@@ -23,6 +26,9 @@ func init() {
 	metaCmd.Flags().StringVarP(&metaAuthor, "author", "a", "", "Set author")
 	metaCmd.Flags().StringVarP(&metaSeries, "series", "s", "", "Set series")
 	metaCmd.Flags().StringVarP(&metaCover, "cover", "c", "", "Set cover image path")
+	metaCmd.Flags().StringVar(&metaISBN, "isbn", "", "Set ISBN identifier")
+	metaCmd.Flags().StringVar(&metaASIN, "asin", "", "Set ASIN identifier")
+	metaCmd.Flags().StringArrayVarP(&metaIdentifiers, "identifier", "i", []string{}, "Set identifier (format: scheme:value, e.g., douban:12345678)")
 	metaCmd.Flags().StringVarP(&metaOutput, "output", "o", "", "Output file path (required for modification)")
 
 	rootCmd.AddCommand(metaCmd)
@@ -43,7 +49,7 @@ var metaCmd = &cobra.Command{
 		defer ep.Close()
 
 		// Read Mode
-		if metaTitle == "" && metaAuthor == "" && metaSeries == "" && metaCover == "" {
+		if metaTitle == "" && metaAuthor == "" && metaSeries == "" && metaCover == "" && metaISBN == "" && metaASIN == "" && len(metaIdentifiers) == 0 {
 			printMetadata(ep)
 			return
 		}
@@ -69,15 +75,59 @@ var metaCmd = &cobra.Command{
 
 func printMetadata(ep *epub.Reader) {
 	fmt.Println("--- Metadata ---")
-	fmt.Printf("Title:    %s\n", ep.Package.GetTitle())
-	fmt.Printf("Author:   %s\n", ep.Package.GetAuthor())
-	fmt.Printf("Series:   %s\n", ep.Package.GetSeries())
-	fmt.Printf("Language: %s\n", ep.Package.GetLanguage())
+	fmt.Printf("Title:       %s\n", ep.Package.GetTitle())
+	fmt.Printf("Author:      %s\n", ep.Package.GetAuthor())
+
+	// Display publisher if available
+	if publisher := ep.Package.GetPublisher(); publisher != "" {
+		fmt.Printf("Publisher:   %s\n", publisher)
+	}
+
+	// Display publication date if available
+	if published := ep.Package.GetPublishDate(); published != "" {
+		fmt.Printf("Published:   %s\n", published)
+	}
+
+	fmt.Printf("Language:    %s\n", ep.Package.GetLanguage())
+
+	// Display series if available
+	if series := ep.Package.GetSeries(); series != "" {
+		fmt.Printf("Series:      %s\n", series)
+	}
+
+	// Display identifiers (ISBN, ASIN, etc.)
+	identifiers := ep.Package.GetIdentifiers()
+	if len(identifiers) > 0 {
+		fmt.Print("Identifiers: ")
+		first := true
+		// Display in a consistent order: isbn, asin, then others
+		displayOrder := []string{"isbn", "asin", "mobi-asin"}
+		for _, scheme := range displayOrder {
+			if value, ok := identifiers[scheme]; ok {
+				if !first {
+					fmt.Print(", ")
+				}
+				fmt.Printf("%s:%s", scheme, value)
+				first = false
+				delete(identifiers, scheme) // Remove to avoid duplicate display
+			}
+		}
+		// Display remaining identifiers
+		for scheme, value := range identifiers {
+			if !first {
+				fmt.Print(", ")
+			}
+			fmt.Printf("%s:%s", scheme, value)
+			first = false
+		}
+		fmt.Println()
+	}
+
 	_, _, err := ep.GetCoverImage()
 	if err == nil {
-		fmt.Println("Cover:    Found")
+		fmt.Println("Cover:       Found")
 	} else {
-		fmt.Println("Cover:    Not Found")
+		fmt.Println("Cover:       Not Found")
 	}
 }
 
@@ -91,6 +141,27 @@ func applyChanges(ep *epub.Reader) error {
 	if metaSeries != "" {
 		ep.Package.SetSeries(metaSeries)
 	}
+	if metaISBN != "" {
+		ep.Package.SetISBN(metaISBN)
+	}
+	if metaASIN != "" {
+		ep.Package.SetASIN(metaASIN)
+	}
+
+	// Handle custom identifiers (format: scheme:value)
+	for _, id := range metaIdentifiers {
+		parts := strings.SplitN(id, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid identifier format '%s', expected 'scheme:value' (e.g., douban:12345678)", id)
+		}
+		scheme := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if scheme == "" || value == "" {
+			return fmt.Errorf("invalid identifier '%s', both scheme and value must be non-empty", id)
+		}
+		ep.Package.SetIdentifier(scheme, value)
+	}
+
 	if metaCover != "" {
 		f, err := os.Open(metaCover)
 		if err != nil {
