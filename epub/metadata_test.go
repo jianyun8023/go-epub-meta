@@ -417,8 +417,8 @@ func TestGetLanguage(t *testing.T) {
 func TestGetLanguageEmpty(t *testing.T) {
 	pkg := createEmptyPackage()
 	lang := pkg.GetLanguage()
-	if lang != "" {
-		t.Errorf("Expected empty string, got '%s'", lang)
+	if lang != "und" {
+		t.Errorf("Expected 'und' (undetermined), got '%s'", lang)
 	}
 }
 
@@ -495,6 +495,208 @@ func TestSetSeriesIndexUpdate(t *testing.T) {
 	pkg.SetSeriesIndex("10")
 	if pkg.GetSeriesIndex() != "10" {
 		t.Errorf("Expected '10', got '%s'", pkg.GetSeriesIndex())
+	}
+}
+
+// =============================================================================
+// EPUB3 Series Tests (belongs-to-collection)
+// =============================================================================
+
+// createEPUB3Package creates a Package with EPUB 3.0 version
+func createEPUB3Package() *Package {
+	return &Package{
+		Version: "3.0",
+		Metadata: Metadata{
+			Titles: []SimpleMeta{
+				{Value: "EPUB3 Test Title"},
+			},
+			Creators: []AuthorMeta{
+				{SimpleMeta: SimpleMeta{Value: "EPUB3 Author"}},
+			},
+			Languages: []SimpleMeta{
+				{Value: "en"},
+			},
+		},
+	}
+}
+
+// createEPUB3PackageWithSeries creates an EPUB3 Package with existing series metadata
+func createEPUB3PackageWithSeries() *Package {
+	return &Package{
+		Version: "3.0",
+		Metadata: Metadata{
+			Titles: []SimpleMeta{
+				{Value: "EPUB3 Series Book"},
+			},
+			Languages: []SimpleMeta{
+				{Value: "en"},
+			},
+			Meta: []Meta{
+				{ID: "c01", Property: "belongs-to-collection", Value: "Existing Series"},
+				{Refines: "#c01", Property: "collection-type", Value: "series"},
+				{Refines: "#c01", Property: "group-position", Value: "3"},
+			},
+		},
+	}
+}
+
+func TestIsEPUB3(t *testing.T) {
+	tests := []struct {
+		version  string
+		expected bool
+	}{
+		{"3.0", true},
+		{"3.1", true},
+		{"3.2", true},
+		{"2.0", false},
+		{"2.0.1", false},
+		{"", false},
+		{"  3.0  ", true}, // with whitespace
+	}
+
+	for _, tc := range tests {
+		pkg := &Package{Version: tc.version}
+		result := pkg.isEPUB3()
+		if result != tc.expected {
+			t.Errorf("isEPUB3(%q) = %v, expected %v", tc.version, result, tc.expected)
+		}
+	}
+}
+
+func TestSetSeriesEPUB3_NewSeries(t *testing.T) {
+	pkg := createEPUB3Package()
+
+	pkg.SetSeries("New EPUB3 Series")
+
+	// Verify series is readable
+	series := pkg.GetSeries()
+	if series != "New EPUB3 Series" {
+		t.Errorf("Expected 'New EPUB3 Series', got '%s'", series)
+	}
+
+	// Verify EPUB3 structure: belongs-to-collection + collection-type
+	var foundCollection, foundType bool
+	var collectionID string
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "belongs-to-collection" && m.Value == "New EPUB3 Series" {
+			foundCollection = true
+			collectionID = m.ID
+		}
+	}
+	for _, m := range pkg.Metadata.Meta {
+		if m.Refines == "#"+collectionID && m.Property == "collection-type" && m.Value == "series" {
+			foundType = true
+		}
+	}
+
+	if !foundCollection {
+		t.Error("EPUB3 series should have belongs-to-collection meta")
+	}
+	if !foundType {
+		t.Error("EPUB3 series should have collection-type=series meta")
+	}
+}
+
+func TestSetSeriesEPUB3_UpdateExisting(t *testing.T) {
+	pkg := createEPUB3PackageWithSeries()
+
+	// Verify initial state
+	if pkg.GetSeries() != "Existing Series" {
+		t.Fatalf("Initial series should be 'Existing Series', got '%s'", pkg.GetSeries())
+	}
+
+	// Update series
+	pkg.SetSeries("Updated EPUB3 Series")
+
+	if pkg.GetSeries() != "Updated EPUB3 Series" {
+		t.Errorf("Expected 'Updated EPUB3 Series', got '%s'", pkg.GetSeries())
+	}
+
+	// Verify we didn't create duplicate collection entries
+	collectionCount := 0
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "belongs-to-collection" {
+			collectionCount++
+		}
+	}
+	if collectionCount != 1 {
+		t.Errorf("Expected 1 belongs-to-collection, got %d", collectionCount)
+	}
+}
+
+func TestSetSeriesIndexEPUB3(t *testing.T) {
+	pkg := createEPUB3PackageWithSeries()
+
+	pkg.SetSeriesIndex("7")
+
+	if pkg.GetSeriesIndex() != "7" {
+		t.Errorf("Expected '7', got '%s'", pkg.GetSeriesIndex())
+	}
+
+	// Verify EPUB3 structure: group-position
+	var foundPosition bool
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "group-position" && m.Value == "7" {
+			foundPosition = true
+		}
+	}
+	if !foundPosition {
+		t.Error("EPUB3 series index should have group-position meta")
+	}
+}
+
+func TestSetSeriesIndexEPUB3_NewSeriesCreated(t *testing.T) {
+	pkg := createEPUB3Package()
+
+	// Set index first (should trigger series creation)
+	pkg.SetSeriesIndex("5")
+
+	// Verify structure was created
+	idx := pkg.GetSeriesIndex()
+	if idx != "5" {
+		t.Errorf("Expected '5', got '%s'", idx)
+	}
+}
+
+func TestSetSeriesEPUB2_UsesCalibresStyle(t *testing.T) {
+	pkg := createEmptyPackage() // Version is empty, treated as EPUB2
+
+	pkg.SetSeries("EPUB2 Series")
+
+	// Verify calibre:series is used
+	var foundCalibreSeries bool
+	for _, m := range pkg.Metadata.Meta {
+		if m.Name == "calibre:series" && m.Content == "EPUB2 Series" {
+			foundCalibreSeries = true
+		}
+	}
+	if !foundCalibreSeries {
+		t.Error("EPUB2 should use calibre:series meta tag")
+	}
+
+	// Verify EPUB3 style is NOT used
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "belongs-to-collection" {
+			t.Error("EPUB2 should not use belongs-to-collection")
+		}
+	}
+}
+
+func TestGetSeriesEPUB3_ReadsBelongsToCollection(t *testing.T) {
+	pkg := createEPUB3PackageWithSeries()
+
+	series := pkg.GetSeries()
+	if series != "Existing Series" {
+		t.Errorf("Expected 'Existing Series', got '%s'", series)
+	}
+}
+
+func TestGetSeriesIndexEPUB3_ReadsGroupPosition(t *testing.T) {
+	pkg := createEPUB3PackageWithSeries()
+
+	idx := pkg.GetSeriesIndex()
+	if idx != "3" {
+		t.Errorf("Expected '3', got '%s'", idx)
 	}
 }
 
@@ -746,6 +948,155 @@ func TestParseIdentifierWithScheme(t *testing.T) {
 	scheme, value := parseIdentifier("ISBN", "978-0-123456-78-9")
 	if scheme != "isbn" || value != "978-0-123456-78-9" {
 		t.Errorf("Expected (isbn, 978-0-123456-78-9), got (%s, %s)", scheme, value)
+	}
+}
+
+func TestSetIdentifier_CaseInsensitiveUpdate(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Metadata.Identifiers = []IDMeta{
+		{Scheme: "isbn", Value: "OLD"},
+	}
+
+	pkg.SetIdentifier("ISBN", "NEW")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	if got := pkg.Metadata.Identifiers[0].Value; got != "NEW" {
+		t.Fatalf("Expected value NEW, got %q", got)
+	}
+	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "isbn" {
+		t.Fatalf("Expected scheme preserved as 'isbn', got %q", gotScheme)
+	}
+}
+
+func TestSetISBN_UpdatesExistingSchemeLowercase(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Metadata.Identifiers = []IDMeta{
+		{Scheme: "isbn", Value: "9780000000000"},
+	}
+
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	if got := pkg.Metadata.Identifiers[0].Value; got != "9780306406157" {
+		t.Fatalf("Expected updated ISBN value, got %q", got)
+	}
+	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "ISBN" {
+		// EPUB2 write normalization prefers opf:scheme="ISBN"
+		t.Fatalf("Expected scheme normalized to 'ISBN', got %q", gotScheme)
+	}
+}
+
+func TestSetISBN_UpdatesExistingURN(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Metadata.Identifiers = []IDMeta{
+		{Scheme: "", Value: "urn:isbn:9780000000000"},
+	}
+
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	if got := pkg.Metadata.Identifiers[0].Value; got != "urn:isbn:9780306406157" {
+		t.Fatalf("Expected updated URN ISBN value, got %q", got)
+	}
+	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "" {
+		t.Fatalf("Expected empty scheme for URN ISBN, got %q", gotScheme)
+	}
+}
+
+func TestSetISBN_AddsURNIfMissing(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	if got := pkg.Metadata.Identifiers[0].Value; got != "9780306406157" {
+		t.Fatalf("Expected plain ISBN value, got %q", got)
+	}
+	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "ISBN" {
+		t.Fatalf("Expected scheme ISBN for new identifier, got %q", gotScheme)
+	}
+}
+
+func TestSetISBN_AddsURNIfMissing_EPUB3(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Version = "3.0"
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	if got := pkg.Metadata.Identifiers[0].Value; got != "urn:isbn:9780306406157" {
+		t.Fatalf("Expected URN ISBN value for EPUB3, got %q", got)
+	}
+	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "" {
+		t.Fatalf("Expected empty scheme for new URN ISBN in EPUB3, got %q", gotScheme)
+	}
+}
+
+func TestSetISBN_UpdatesAllISBNEntries(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Metadata.Identifiers = []IDMeta{
+		{ID: "ISBN", Value: "978-7-5001-6815-7"},
+		{Scheme: "ISBN", Value: "9787500168157"},
+	}
+
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 2 {
+		t.Fatalf("Expected 2 identifiers, got %d", len(pkg.Metadata.Identifiers))
+	}
+	if got := pkg.Metadata.Identifiers[0].Value; got != "978-0-3064-0615-7" {
+		t.Fatalf("Expected preserved separator layout update, got %q", got)
+	}
+	if got := pkg.Metadata.Identifiers[1].Value; got != "9780306406157" {
+		t.Fatalf("Expected plain update, got %q", got)
+	}
+}
+
+func TestSetISBN_ConvertsValuePrefixISBN_ToSchemeForEPUB2(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Version = "2.0"
+	pkg.Metadata.Identifiers = []IDMeta{
+		{Scheme: "", Value: "isbn:9780000000000"},
+	}
+
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "ISBN" {
+		t.Fatalf("Expected scheme ISBN for EPUB2, got %q", gotScheme)
+	}
+	if got := pkg.Metadata.Identifiers[0].Value; got != "9780306406157" {
+		t.Fatalf("Expected plain ISBN value for EPUB2, got %q", got)
+	}
+}
+
+func TestSetISBN_ConvertsValuePrefixISBN_ToURNForEPUB3(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Version = "3.0"
+	pkg.Metadata.Identifiers = []IDMeta{
+		{Scheme: "", Value: "isbn:9780000000000"},
+	}
+
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "" {
+		t.Fatalf("Expected empty scheme for EPUB3 URN ISBN, got %q", gotScheme)
+	}
+	if got := pkg.Metadata.Identifiers[0].Value; got != "urn:isbn:9780306406157" {
+		t.Fatalf("Expected URN ISBN value for EPUB3, got %q", got)
 	}
 }
 
@@ -1004,6 +1355,50 @@ func TestSetRating_UpdateExisting(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("Expected 1 calibre:rating meta, got %d", count)
+	}
+}
+
+func TestSetRating_UpdateExisting_EPUB3Property(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Version = "3.0"
+	pkg.Metadata.Meta = []Meta{
+		{Property: "calibre:rating", Value: "10"},
+	}
+
+	pkg.SetRating(4) // 4 -> 8
+
+	if got := pkg.GetRatingRaw(); got != "8" {
+		t.Errorf("GetRatingRaw() = %s, want %s", got, "8")
+	}
+	if got := pkg.GetRating(); got != 4 {
+		t.Errorf("GetRating() = %d, want %d", got, 4)
+	}
+}
+
+func TestSetRating_UpdateBothForms_WhenBothExist(t *testing.T) {
+	pkg := createEmptyPackage()
+	pkg.Version = "3.0"
+	pkg.Metadata.Meta = []Meta{
+		{Property: "calibre:rating", Value: "10"},
+		{Name: "calibre:rating", Content: "10"},
+	}
+
+	pkg.SetRating(2) // 2 -> 4
+
+	var prop, name string
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "calibre:rating" {
+			prop = m.Value
+		}
+		if m.Name == "calibre:rating" {
+			name = m.Content
+		}
+	}
+	if prop != "4" {
+		t.Errorf("Expected property rating '4', got '%s'", prop)
+	}
+	if name != "4" {
+		t.Errorf("Expected name rating '4', got '%s'", name)
 	}
 }
 

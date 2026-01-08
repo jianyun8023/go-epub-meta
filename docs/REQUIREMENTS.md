@@ -43,12 +43,10 @@ Jules 需要实现以下核心功能的 **Read (读取)** 和 **Write (写入)**
 ### 1.2 架构要求
 
 #### 零依赖 (Zero-dependency)
-- ⚠️ **当前状态**: 使用了 `spf13/cobra` 作为 CLI 框架
-- **建议**: 核心 `epub/` 包完全零依赖（仅标准库），CLI 可保留 Cobra 以提升用户体验
-- ✅ **核心库**: 仅使用 Go 标准库
-  - `archive/zip` - ZIP 文件处理
-  - `encoding/xml` - XML 解析
-  - `image` - 图像格式检测（可选）
+- ✅ **依赖边界**（以仓库当前规则为准）：
+  - **核心库 `epub/`**：Go 标准库 + `github.com/beevik/etree`（容错 XML 解析）
+  - **CLI `cmd/golibri`**：允许使用 `spf13/cobra` / `pflag` 提升 UX
+  - **红线**：禁止 CGO / Python / Qt；禁止重新压缩未修改条目；必须原子写入
   
 #### 非破坏性 (Non-destructive)
 - ✅ **原始文件保护**: 修改元数据时，保留 EPUB 内其他文件的原始字节完整性
@@ -107,13 +105,11 @@ Jules 需要实现以下核心功能的 **Read (读取)** 和 **Write (写入)**
 
 ### 3.1 扫描模式 (Dry-Run / Audit Mode)
 
-#### 实现状态: ✅ 已实现 (`cmd/golibri/commands/audit.go`)
+#### 实现状态: ✅ 已实现（迁移到 `cmd/test-suite`）
 
 **功能**:
-- `golibri audit <directory>` - 审计模式命令
-- 遍历目录下所有 `.epub` 文件
-- 仅执行 `Open()` 和基础元数据读取
-- 不执行写入操作
+- 使用 `test-suite functional` 的 `read/json` 模式完成“只读扫描”与错误统计
+- 遍历目录下所有 `.epub` 文件，验证可打开、可解析 OPF、可读取基础字段
 
 **输出**:
 ```
@@ -131,20 +127,19 @@ Scan complete. Success: 9847, Failed: 153
 
 ### 3.2 往返测试 (Round-Trip Verification)
 
-#### 实现状态: ✅ 已实现 (`cmd/golibri/commands/stress.go`)
+#### 实现状态: ✅ 已实现（`test-suite functional --mode roundtrip`）
 
 **功能**:
-- `golibri stress-test <directory>` - 压力测试命令
-- 并发 Worker Pool（默认 16 个并发）
-- 对每个文件执行：**读取 A → 修改内存对象 → 写入 B → 读取 B**
+- `test-suite functional <dir> --mode roundtrip`
+- 对每个文件执行：**读取 A → 保存 B（无修改）→ 再打开 B 验证可读**
+- 重点验证：**非破坏性拷贝**与 **原子写入** 不引入损坏
 
 **验证逻辑**:
 ```go
 1. 打开原始文件
-2. 修改标题（添加 "[MOD]" 后缀）
-3. 保存到临时文件
+2. 保存到临时文件（无修改）
 4. 重新打开临时文件
-5. 验证修改是否生效
+5. 验证仍可读（必要字段可取）
 6. 清理临时文件
 ```
 
@@ -191,19 +186,36 @@ func (r *Reader) Save(outputPath string) error
 
 // 元数据读取
 func (pkg *Package) GetTitle() string
-func (pkg *Package) GetAuthor() string
+func (pkg *Package) GetAuthors() []string
+func (pkg *Package) GetAuthor() string // 兼容：返回第一个作者
 func (pkg *Package) GetSeries() string
+func (pkg *Package) GetSeriesIndex() string        // Calibre 扩展
 func (pkg *Package) GetLanguage() string
 func (pkg *Package) GetDescription() string
 func (pkg *Package) GetSubjects() []string
+func (pkg *Package) GetPublisher() string
+func (pkg *Package) GetPublishDate() string
+func (pkg *Package) GetIdentifiers() map[string]string
+func (pkg *Package) GetISBN() string
+func (pkg *Package) GetASIN() string
+func (pkg *Package) GetProducer() string
+func (pkg *Package) GetRating() int                // Calibre 扩展（0-5）
+func (pkg *Package) GetRatingRaw() string          // Calibre 扩展（0-10）
 
 // 元数据写入
 func (pkg *Package) SetTitle(title string)
 func (pkg *Package) SetAuthor(name string)
 func (pkg *Package) SetSeries(series string)
+func (pkg *Package) SetSeriesIndex(index string)   // Calibre 扩展
 func (pkg *Package) SetLanguage(lang string)
 func (pkg *Package) SetDescription(desc string)
 func (pkg *Package) SetSubjects(tags []string)
+func (pkg *Package) SetPublisher(publisher string)
+func (pkg *Package) SetPublishDate(date string)
+func (pkg *Package) SetIdentifier(scheme, value string)
+func (pkg *Package) SetISBN(isbn string)
+func (pkg *Package) SetASIN(asin string)
+func (pkg *Package) SetRating(rating int)          // Calibre 扩展（0-5 -> 0-10）
 
 // 封面操作
 func (r *Reader) GetCoverImage() (io.ReadCloser, string, error)
@@ -218,16 +230,13 @@ func (r *Reader) SetCover(data []byte, mediaType string)
 golibri meta input.epub
 
 # 修改元数据
-golibri meta input.epub -t "New Title" -a "Author" -o output.epub
+golibri meta input.epub -t "New Title" -a "Author"
 
 # 替换封面
-golibri meta input.epub -c cover.jpg -o output.epub
+golibri meta input.epub -c cover.jpg
 
-# 审计模式（只读扫描）
-golibri audit /path/to/epub/dir
-
-# 压力测试（往返测试）
-golibri stress-test /path/to/epub/dir
+# 输出到新文件（可选）
+golibri meta input.epub -t "New Title" -o output.epub
 ```
 
 #### 待实现命令:
@@ -263,8 +272,9 @@ golibri batch <script.json> <input-dir> <output-dir>
 ```
 
 #### 待补充测试:
-- ⚠️ EPUB 3.x 完整测试用例
-- ⚠️ 封面替换集成测试
+- ✅ EPUB 3 / 多作者解析测试（已补齐）
+- ⚠️ EPUB3 写入路径更完整的端到端测试（如 collection/series 的 EPUB3 表达）
+- ⚠️ 封面替换更复杂场景集成测试
 - ⚠️ 大文件性能测试
 - ⚠️ 边界情况测试（损坏的 ZIP、缺失 OPF 等）
 
@@ -276,36 +286,37 @@ golibri batch <script.json> <input-dir> <output-dir>
 
 #### 核心库:
 - ✅ EPUB 2/3 解析器（支持复杂 namespace）
-- ✅ 零依赖核心库（epub 包）
+- ✅ 核心库最小依赖（标准库 + etree）
 - ✅ 非破坏性 ZIP 重打包
 - ✅ 容错 XML 解析（Strict=false）
 - ✅ Latin1/Windows-1252 编码支持
-- ✅ 元数据读写（Title, Author, Series, Description, Language, Subjects）
+- ✅ 元数据读写（Title, Authors, Publisher, PublishDate, Language, Description, Subjects/Tags, Identifiers, Series/SeriesIndex, Rating）
 - ✅ 封面提取和替换
 - ✅ 原子性保存（临时文件 + 重命名）
 
 #### CLI 工具:
 - ✅ Cobra 框架集成（提升 UX）
 - ✅ `meta` 命令（查看和修改元数据）
-- ✅ `audit` 命令（只读审计）
-- ✅ `stress-test` 命令（往返测试）
+  - 现支持 **in-place** 修改（不指定 `-o` 时直接修改原文件）
+  - 提供 `--json` 结构化输出（便于程序消费）。注意：`ebook-meta` 通常仅提供文本输出，不保证存在稳定的 JSON 输出开关。
 
 #### 测试:
 - ✅ 单元测试覆盖核心功能
 - ✅ 非破坏性验证测试
 - ✅ 原地修改测试
+ - ✅ `cmd/test-suite` 支持 functional / compare 回归工具链
 
 ### 5.2 待完善功能 (⚠️)
 
 #### 功能增强:
-1. **ISBN 支持** - 当前通过 Identifier 可访问，需添加专门的 Get/Set 方法
+1. **ISBN/ASIN 进一步规范化** - 目前已支持 Get/Set，但仍可增强校验/清洗策略
 2. **更多元数据字段** - Rights, Date, Type, Format 等
 3. **Guide 支持** - EPUB 2 的 Guide 引用
 4. **NCX 支持** - EPUB 2 导航文件
 5. **EPUB 3 特性** - 更完整的 EPUB 3.x 支持（如 `<meta property="dcterms:modified">`）
 
 #### 测试增强:
-1. **并发审计** - `audit` 命令支持并发扫描
+1. **并发扫描/报告增强** - `test-suite functional` 增强并发与错误分类统计
 2. **错误分类** - 详细的错误类型统计（ZIP_CORRUPT, XML_PARSE_ERROR, MISSING_OPF）
 3. **哈希验证** - 往返测试中添加 SHA256 哈希比对
 4. **报告生成** - 生成 JSON/CSV 格式的详细报告
@@ -324,12 +335,8 @@ golibri batch <script.json> <input-dir> <output-dir>
 
 ### 5.3 技术债务
 
-#### Cobra 依赖:
-- **问题**: 当前 CLI 依赖 `spf13/cobra`，不符合"零依赖"需求
-- **方案选择**:
-  1. **保留 Cobra** (推荐): 核心库零依赖，CLI 工具可有依赖以提升 UX
-  2. **移除 Cobra**: 使用 `flag` 标准库重写 CLI（降低用户体验）
-- **建议**: 保留 Cobra，文档中说明"核心库零依赖，CLI 工具使用 Cobra 提升体验"
+#### 依赖策略:
+- **结论**：保留 Cobra（CLI UX），核心库保持最小依赖（标准库 + etree），满足“轻量级/无 Python+Qt”目标。
 
 #### Windows 兼容性:
 - **问题**: Windows 下打开的文件无法被重命名
@@ -366,14 +373,15 @@ golibri batch <script.json> <input-dir> <output-dir>
 
 #### Phase 1: 快速审计 (Audit)
 ```bash
-golibri audit /path/to/epubs > audit_report.log
+go build -o test-suite ./cmd/test-suite/
+./test-suite functional /path/to/epubs --mode read > audit_report.log
 ```
 **预期时间**: 根据文件数量而定（SSD 磁盘约每秒处理 50-100 本）  
 **成功标准**: 成功率 > 99.5%
 
 #### Phase 2: 完整压力测试 (Stress Test)
 ```bash
-golibri stress-test /path/to/epubs > stress_report.log
+./test-suite functional /path/to/epubs --mode all > functional_report.log
 ```
 **预期时间**: 约为审计时间的 2-3 倍（包含写入操作）  
 **成功标准**: 
@@ -433,7 +441,7 @@ golibri stress-test /path/to/epubs > stress_report.log
 ## 8. 成功标准
 
 ### 定量指标:
-- ✅ **零依赖核心库**: `epub/` 包无外部依赖
+- ✅ **最小依赖**: 核心库（标准库 + etree），CLI 可依赖 cobra
 - ✅ **非破坏性**: 往返测试中非修改文件 CRC 一致
 - ⚠️ **高成功率**: 大规模测试成功率 > 99.5%
 - ⚠️ **零数据损坏**: 无任何文件在修改后无法打开或内容损坏

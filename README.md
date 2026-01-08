@@ -66,7 +66,7 @@ go build -o golibri ./cmd/golibri/
 
 #### 3. JSON 输出（新功能）
 
-输出 JSON 格式的元数据，与 `ebook-meta --as-json` 兼容：
+输出 JSON 格式的元数据（字段风格对齐 Calibre/ebook-meta 的常见语义）。注意：`ebook-meta` 通常只输出文本，不保证提供稳定的 JSON 输出开关：
 
 ```bash
 ./golibri meta book.epub --json
@@ -164,6 +164,8 @@ go run generate_test_epubs.go
 
 Golibri 可作为标准的 Go 包导入，用于在该 Go 项目中处理 EPUB 文件。
 
+更完整的开发者指南见：[`docs/EPUB_LIBRARY.md`](docs/EPUB_LIBRARY.md)。
+
 ### 安装依赖
 
 ```bash
@@ -235,7 +237,7 @@ func main() {
 |------|---------|---------------------|
 | 大小 | <10MB | >300MB (含依赖) |
 | 依赖 | 零依赖 | Python + Qt |
-| JSON 输出 | ✅ `--json` | ✅ `--as-json` |
+| JSON 输出 | ✅ `--json` | ⚠️ 通常仅文本输出（不同版本行为不一） |
 | 性能 | 高（纯 Go） | 中（Python） |
 | 安装 | 单文件 | 需要 Calibre |
 | 跨平台 | ✅ | ✅ |

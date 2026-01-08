@@ -7,10 +7,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Save writes the modified EPUB to the specified output path.
-// It ensures mimetype is written first and uncompressed.
+// It preserves the original ZIP entry order (except mimetype which must be first).
+// It preserves the original compression method for each entry.
 // It writes to a temporary file first to support in-place rewriting.
 func (r *Reader) Save(outputPath string) error {
 	// 1. Create temp file
@@ -41,9 +43,8 @@ func (r *Reader) Save(outputPath string) error {
 		return err
 	}
 
-	// 4. Serialize modified OPF
-	// We need to write it to a buffer first to know its size, or just write it.
-	// But we need to filter it out from the stream copy later.
+	// 4. Prepare modified content
+	// Serialize OPF
 	opfContent, err := xml.MarshalIndent(r.Package, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal OPF: %w", err)
@@ -51,62 +52,86 @@ func (r *Reader) Save(outputPath string) error {
 	// Add XML header
 	opfContent = append([]byte(xml.Header), opfContent...)
 
-	// Write OPF to new zip
-	// Note: We should preserve the original compression settings if possible, but for OPF text is fine.
-	// Using Deflate (Default)
-	fw, err := w.Create(r.OpfPath)
-	if err != nil {
-		return fmt.Errorf("failed to create OPF entry: %w", err)
-	}
-	if _, err := fw.Write(opfContent); err != nil {
-		return fmt.Errorf("failed to write OPF content: %w", err)
-	}
-
-	// 5. Write Replacements (New/Modified files)
-	// Track which files we've written to avoid duplicates if they exist in source
+	// Track which files we've written
 	writtenFiles := make(map[string]bool)
 	writtenFiles["mimetype"] = true
-	writtenFiles[r.OpfPath] = true
 
+	// Build a map of original files for looking up compression method
+	originalFiles := make(map[string]*zip.File)
+	for _, f := range r.zipReader.File {
+		originalFiles[f.Name] = f
+	}
+
+	// 5. Stream copy files in ORIGINAL order, replacing OPF and Replacements
+	for _, f := range r.zipReader.File {
+		name := f.Name
+
+		// Skip mimetype (already written first)
+		if name == "mimetype" {
+			continue
+		}
+
+		// Skip directory entries
+		if f.FileInfo().IsDir() || strings.HasSuffix(name, "/") {
+			continue
+		}
+
+		// Mark as written
+		writtenFiles[name] = true
+
+		// Determine what content to write
+		if name == r.OpfPath {
+			// Write modified OPF, preserving original compression method
+			if err := writeContentWithMethod(w, name, opfContent, f.Method); err != nil {
+				return fmt.Errorf("failed to write OPF: %w", err)
+			}
+		} else if r.Replacements != nil {
+			if content, ok := r.Replacements[name]; ok {
+				// Write replacement content, preserving original compression method
+				if err := writeContentWithMethod(w, name, content, f.Method); err != nil {
+					return fmt.Errorf("failed to write replacement %s: %w", name, err)
+				}
+			} else {
+				// Copy original file unchanged (raw copy, no re-compression)
+				if err := copyZipFile(r, f, w); err != nil {
+					return fmt.Errorf("failed to copy file %s: %w", name, err)
+				}
+			}
+		} else {
+			// Copy original file unchanged
+			if err := copyZipFile(r, f, w); err != nil {
+				return fmt.Errorf("failed to copy file %s: %w", name, err)
+			}
+		}
+	}
+
+	// 6. Write any NEW Replacement files (not in original ZIP)
 	if r.Replacements != nil {
 		for path, content := range r.Replacements {
-			// Create file in zip
-			// Assume standard compression
-			fw, err := w.Create(path)
-			if err != nil {
-				return fmt.Errorf("failed to create replacement file %s: %w", path, err)
+			if writtenFiles[path] {
+				continue
 			}
-			if _, err := fw.Write(content); err != nil {
-				return fmt.Errorf("failed to write replacement content for %s: %w", path, err)
+			// New file: use Deflate by default, but if there's an original with same path, inherit its method
+			method := zip.Deflate
+			if orig, ok := originalFiles[path]; ok {
+				method = orig.Method
+			}
+			if err := writeContentWithMethod(w, path, content, method); err != nil {
+				return fmt.Errorf("failed to write new file %s: %w", path, err)
 			}
 			writtenFiles[path] = true
 		}
 	}
 
-	// 6. Stream copy other files
-	// We iterate over the original zipReader
-	for _, f := range r.zipReader.File {
-		// Skip if already written (mimetype, opf, or replaced files)
-		if writtenFiles[f.Name] {
-			continue
-		}
-
-		// Copy file
-		if err := copyZipFile(r, f, w); err != nil {
-			return fmt.Errorf("failed to copy file %s: %w", f.Name, err)
-		}
-	}
-
-	// Close Writer explicitly to flush
+	// 7. Close Writer explicitly to flush
 	if err := w.Close(); err != nil {
 		return fmt.Errorf("failed to close zip writer: %w", err)
 	}
 
-	// We are done writing to temp
-	// Close file handled by defer, but we need to rename now.
-	// Windows rename needs close first.
+	// Close temp file before rename (required on Windows)
 	tmpF.Close()
 
+	// 8. Atomic rename
 	if err := os.Rename(tmpPath, outputPath); err != nil {
 		return fmt.Errorf("failed to move temp file to output: %w", err)
 	}
@@ -115,13 +140,28 @@ func (r *Reader) Save(outputPath string) error {
 	return nil
 }
 
+// writeContentWithMethod writes content to the zip with specified compression method.
+func writeContentWithMethod(w *zip.Writer, name string, content []byte, method uint16) error {
+	header := &zip.FileHeader{
+		Name:   name,
+		Method: method,
+	}
+
+	fw, err := w.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+
+	_, err = fw.Write(content)
+	return err
+}
+
 func writeMimetype(w *zip.Writer) error {
 	header := &zip.FileHeader{
 		Name:   "mimetype",
 		Method: zip.Store, // No compression
 	}
 
-	// Open writer for this header
 	fw, err := w.CreateHeader(header)
 	if err != nil {
 		return fmt.Errorf("failed to create mimetype header: %w", err)
@@ -136,22 +176,19 @@ func writeMimetype(w *zip.Writer) error {
 	return nil
 }
 
+// copyZipFile copies a file entry from source to destination zip using raw copy.
+// This preserves the original compression without re-encoding.
 func copyZipFile(r *Reader, f *zip.File, w *zip.Writer) error {
+	// Directory entries are optional; skip them to avoid "zip: write to directory".
+	if f.FileInfo().IsDir() || strings.HasSuffix(f.Name, "/") {
+		return nil
+	}
+
 	// Use CreateRaw to avoid re-compression.
 	// This requires reading raw bytes from the underlying file.
 
-	// Construct header
-	// We can mostly copy the header from f, but we need to be careful.
-	// f.FileHeader contains compressed size, uncompressed size, crc32.
-	// CreateRaw expects these to be set correctly if we are writing raw.
-
+	// Copy the header (CreateRaw treats it as immutable)
 	header := f.FileHeader
-	// Clear flags that might confuse Writer if we are not careful?
-	// Actually, CreateRaw documentation says:
-	// "The provided FileHeader is treated as immutable"
-	// "The caller must write exactly UncompressedSize bytes" -> WAIT.
-	// Docs for CreateRaw: "The caller must write exactly CompressedSize bytes to the returned writer".
-	// Yes.
 
 	fw, err := w.CreateRaw(&header)
 	if err != nil {
@@ -164,10 +201,7 @@ func copyZipFile(r *Reader, f *zip.File, w *zip.Writer) error {
 		return fmt.Errorf("failed to get data offset: %w", err)
 	}
 
-	// Seek to offset
-	// We can't share the file pointer easily if concurrent, but we are sequential here.
-	// r.file is *os.File
-
+	// Read exactly CompressedSize64 bytes from the raw offset
 	section := io.NewSectionReader(r.file, offset, int64(f.CompressedSize64))
 
 	_, err = io.Copy(fw, section)

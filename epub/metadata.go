@@ -6,6 +6,13 @@ import (
 	"strings"
 )
 
+func (pkg *Package) isEPUB3() bool {
+	// Declared version is the most stable signal.
+	// Keep it conservative: only treat "3.*" as EPUB3.
+	v := strings.TrimSpace(pkg.Version)
+	return strings.HasPrefix(v, "3")
+}
+
 // GetTitle returns the first title found.
 func (pkg *Package) GetTitle() string {
 	if len(pkg.Metadata.Titles) > 0 {
@@ -194,9 +201,13 @@ func (pkg *Package) SetDescription(desc string) {
 // GetLanguage returns the language.
 func (pkg *Package) GetLanguage() string {
 	if len(pkg.Metadata.Languages) > 0 {
-		return pkg.Metadata.Languages[0].Value
+		if v := pkg.Metadata.Languages[0].Value; v != "" {
+			return v
+		}
 	}
-	return ""
+	// EPUB language is a BCP47 tag. If missing, use "und" (undetermined).
+	// This keeps JSON output consistent and avoids omitting the field.
+	return "und"
 }
 
 // SetLanguage sets the language.
@@ -207,17 +218,49 @@ func (pkg *Package) SetLanguage(lang string) {
 // GetSeries attempts to find the series name.
 // It looks for Calibre meta tags for EPUB 2.
 func (pkg *Package) GetSeries() string {
+	// EPUB 3: <meta property="belongs-to-collection" id="c01">Series</meta>
+	//        <meta refines="#c01" property="collection-type">series</meta>
+	// See: https://www.w3.org/publishing/epub32/epub-packages.html#sec-metadata-collection
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "belongs-to-collection" && m.Value != "" && m.ID != "" {
+			id := "#" + m.ID
+			for _, refine := range pkg.Metadata.Meta {
+				if refine.Refines == id && refine.Property == "collection-type" && strings.TrimSpace(refine.Value) == "series" {
+					return m.Value
+				}
+			}
+		}
+	}
+
 	for _, m := range pkg.Metadata.Meta {
 		if m.Name == "calibre:series" {
 			return m.Content
 		}
-		// Todo: EPUB 3 meta with collection property?
 	}
 	return ""
 }
 
 // GetSeriesIndex returns the series index.
 func (pkg *Package) GetSeriesIndex() string {
+	// EPUB 3: <meta refines="#c01" property="group-position">3</meta>
+	// Note: We don't require m.Value != "" here because series index can exist
+	// even when series name is empty (edge case, but valid EPUB3 structure).
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "belongs-to-collection" && m.ID != "" {
+			id := "#" + m.ID
+			for _, refine := range pkg.Metadata.Meta {
+				if refine.Refines == id && refine.Property == "collection-type" && strings.TrimSpace(refine.Value) == "series" {
+					// Now try group-position on same refines id
+					for _, gp := range pkg.Metadata.Meta {
+						if gp.Refines == id && gp.Property == "group-position" {
+							return gp.Value
+						}
+					}
+				}
+			}
+		}
+	}
+
 	for _, m := range pkg.Metadata.Meta {
 		if m.Name == "calibre:series_index" {
 			return m.Content
@@ -228,6 +271,82 @@ func (pkg *Package) GetSeriesIndex() string {
 
 // SetSeries sets the series using Calibre meta tag.
 func (pkg *Package) SetSeries(series string) {
+	// EPUB 3: write standards-based collection/series metadata.
+	// If declared EPUB3, prefer EPUB3-style meta instead of calibre:* tags.
+	if pkg.isEPUB3() {
+		// Try to find existing series collection
+		var collectionID string
+		for _, m := range pkg.Metadata.Meta {
+			if m.Property == "belongs-to-collection" && m.ID != "" {
+				id := "#" + m.ID
+				for _, refine := range pkg.Metadata.Meta {
+					if refine.Refines == id && refine.Property == "collection-type" && strings.TrimSpace(refine.Value) == "series" {
+						collectionID = m.ID
+						break
+					}
+				}
+			}
+			if collectionID != "" {
+				break
+			}
+		}
+
+		if collectionID == "" {
+			// Generate deterministic id: c01, c02, ...
+			used := make(map[string]bool)
+			for _, m := range pkg.Metadata.Meta {
+				if m.ID != "" {
+					used[m.ID] = true
+				}
+			}
+			for i := 1; ; i++ {
+				candidate := fmt.Sprintf("c%02d", i)
+				if !used[candidate] {
+					collectionID = candidate
+					break
+				}
+			}
+			// Add belongs-to-collection
+			pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
+				ID:       collectionID,
+				Property: "belongs-to-collection",
+				Value:    series,
+			})
+			// Add collection-type=series
+			pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
+				Refines:  "#" + collectionID,
+				Property: "collection-type",
+				Value:    "series",
+			})
+			return
+		}
+
+		// Update existing belongs-to-collection value
+		for i := range pkg.Metadata.Meta {
+			if pkg.Metadata.Meta[i].Property == "belongs-to-collection" && pkg.Metadata.Meta[i].ID == collectionID {
+				pkg.Metadata.Meta[i].Value = series
+				break
+			}
+		}
+		// Ensure collection-type=series exists
+		foundType := false
+		for i := range pkg.Metadata.Meta {
+			if pkg.Metadata.Meta[i].Refines == "#"+collectionID && pkg.Metadata.Meta[i].Property == "collection-type" {
+				pkg.Metadata.Meta[i].Value = "series"
+				foundType = true
+				break
+			}
+		}
+		if !foundType {
+			pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
+				Refines:  "#" + collectionID,
+				Property: "collection-type",
+				Value:    "series",
+			})
+		}
+		return
+	}
+
 	// Remove existing series tag
 	newMeta := []Meta{}
 	found := false
@@ -253,6 +372,52 @@ func (pkg *Package) SetSeries(series string) {
 
 // SetSeriesIndex sets the series index using Calibre meta tag.
 func (pkg *Package) SetSeriesIndex(index string) {
+	// EPUB 3: write group-position on the series collection.
+	if pkg.isEPUB3() {
+		// Ensure series exists first (creates collection-type too)
+		if pkg.GetSeries() == "" {
+			pkg.SetSeries("") // creates a series collection with empty value
+		}
+
+		// Find series collection id
+		var collectionID string
+		for _, m := range pkg.Metadata.Meta {
+			if m.Property == "belongs-to-collection" && m.ID != "" {
+				id := "#" + m.ID
+				for _, refine := range pkg.Metadata.Meta {
+					if refine.Refines == id && refine.Property == "collection-type" && strings.TrimSpace(refine.Value) == "series" {
+						collectionID = m.ID
+						break
+					}
+				}
+			}
+			if collectionID != "" {
+				break
+			}
+		}
+		if collectionID == "" {
+			// Fallback: behave like EPUB2 if we couldn't establish a collection.
+		} else {
+			// Update or add group-position
+			foundPos := false
+			for i := range pkg.Metadata.Meta {
+				if pkg.Metadata.Meta[i].Refines == "#"+collectionID && pkg.Metadata.Meta[i].Property == "group-position" {
+					pkg.Metadata.Meta[i].Value = index
+					foundPos = true
+					break
+				}
+			}
+			if !foundPos {
+				pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
+					Refines:  "#" + collectionID,
+					Property: "group-position",
+					Value:    index,
+				})
+			}
+			return
+		}
+	}
+
 	newMeta := []Meta{}
 	found := false
 	for _, m := range pkg.Metadata.Meta {
@@ -277,6 +442,17 @@ func (pkg *Package) SetSeriesIndex(index string) {
 // Calibre stores rating as 0-10, this converts to 0-5.
 func (pkg *Package) GetRating() int {
 	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "calibre:rating" && strings.TrimSpace(m.Value) != "" {
+			// Parse as integer, Calibre uses 0-10 scale
+			var rating int
+			if _, err := fmt.Sscanf(m.Value, "%d", &rating); err == nil {
+				return rating / 2
+			}
+			var ratingFloat float64
+			if _, err := fmt.Sscanf(m.Value, "%f", &ratingFloat); err == nil {
+				return int(ratingFloat) / 2
+			}
+		}
 		if m.Name == "calibre:rating" {
 			// Parse as integer, Calibre uses 0-10 scale
 			var rating int
@@ -297,6 +473,9 @@ func (pkg *Package) GetRating() int {
 // GetRatingRaw returns the raw rating value as stored (0-10 for Calibre).
 func (pkg *Package) GetRatingRaw() string {
 	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "calibre:rating" && strings.TrimSpace(m.Value) != "" {
+			return m.Value
+		}
 		if m.Name == "calibre:rating" {
 			return m.Content
 		}
@@ -326,10 +505,18 @@ func (pkg *Package) SetRating(rating int) {
 			m.Content = calibreRating
 			found = true
 		}
+		if m.Property == "calibre:rating" {
+			m.Value = calibreRating
+			found = true
+		}
 		newMeta = append(newMeta, m)
 	}
 	if !found {
-		newMeta = append(newMeta, Meta{Name: "calibre:rating", Content: calibreRating})
+		if pkg.isEPUB3() {
+			newMeta = append(newMeta, Meta{Property: "calibre:rating", Value: calibreRating})
+		} else {
+			newMeta = append(newMeta, Meta{Name: "calibre:rating", Content: calibreRating})
+		}
 	}
 	pkg.Metadata.Meta = newMeta
 }
@@ -472,8 +659,9 @@ func isISBN(s string) bool {
 // GetISBN returns the ISBN identifier if it exists.
 func (pkg *Package) GetISBN() string {
 	for _, id := range pkg.Metadata.Identifiers {
-		if id.Scheme == "ISBN" || id.Scheme == "isbn" {
-			return id.Value
+		scheme, value := parseIdentifier(id.Scheme, id.Value)
+		if scheme == "isbn" {
+			return value
 		}
 	}
 	return ""
@@ -482,8 +670,9 @@ func (pkg *Package) GetISBN() string {
 // GetASIN returns the ASIN identifier if it exists.
 func (pkg *Package) GetASIN() string {
 	for _, id := range pkg.Metadata.Identifiers {
-		if id.Scheme == "ASIN" || id.Scheme == "asin" {
-			return id.Value
+		scheme, value := parseIdentifier(id.Scheme, id.Value)
+		if scheme == "asin" || scheme == "mobi-asin" {
+			return value
 		}
 	}
 	return ""
@@ -494,7 +683,7 @@ func (pkg *Package) GetASIN() string {
 func (pkg *Package) SetIdentifier(scheme, value string) {
 	// Find and update existing identifier with the same scheme
 	for i, id := range pkg.Metadata.Identifiers {
-		if id.Scheme == scheme {
+		if normalizeScheme(id.Scheme) == normalizeScheme(scheme) {
 			pkg.Metadata.Identifiers[i].Value = value
 			return
 		}
@@ -509,7 +698,106 @@ func (pkg *Package) SetIdentifier(scheme, value string) {
 
 // SetISBN sets the ISBN identifier.
 func (pkg *Package) SetISBN(isbn string) {
-	pkg.SetIdentifier("ISBN", isbn)
+	trimmed := strings.TrimSpace(isbn)
+	clean := strings.TrimSpace(isbn)
+	clean = strings.ReplaceAll(clean, "-", "")
+	clean = strings.ReplaceAll(clean, " ", "")
+	inputHasSep := strings.Contains(trimmed, "-") || strings.Contains(trimmed, " ")
+
+	// Respect original format: update existing ISBN-like identifiers in-place.
+	found := false
+	for i := range pkg.Metadata.Identifiers {
+		parsedScheme, _ := parseIdentifier(pkg.Metadata.Identifiers[i].Scheme, pkg.Metadata.Identifiers[i].Value)
+		if parsedScheme != "isbn" {
+			continue
+		}
+
+		raw := strings.TrimSpace(pkg.Metadata.Identifiers[i].Value)
+		lower := strings.ToLower(raw)
+		switch {
+		case strings.HasPrefix(lower, "urn:isbn:"):
+			// Standards-friendly (EPUB3-preferred) URN form.
+			pkg.Metadata.Identifiers[i].Scheme = ""
+			pkg.Metadata.Identifiers[i].Value = "urn:isbn:" + clean
+		case strings.HasPrefix(lower, "isbn:"):
+			// "isbn:" prefix inside value is a common but non-standard EPUB2 pattern.
+			// Normalize to EPUB2/3 standard representation based on declared version.
+			if pkg.isEPUB3() {
+				pkg.Metadata.Identifiers[i].Scheme = ""
+				pkg.Metadata.Identifiers[i].Value = "urn:isbn:" + clean
+			} else {
+				pkg.Metadata.Identifiers[i].Scheme = "ISBN"
+				if inputHasSep {
+					pkg.Metadata.Identifiers[i].Value = trimmed
+				} else {
+					pkg.Metadata.Identifiers[i].Value = clean
+				}
+			}
+		default:
+			if pkg.isEPUB3() {
+				// EPUB3: prefer URN form.
+				pkg.Metadata.Identifiers[i].Scheme = ""
+				pkg.Metadata.Identifiers[i].Value = "urn:isbn:" + clean
+			} else {
+				// EPUB2: prefer opf:scheme="ISBN" + value (preserve separators when possible).
+				pkg.Metadata.Identifiers[i].Scheme = "ISBN"
+				if inputHasSep {
+					pkg.Metadata.Identifiers[i].Value = trimmed
+				} else if strings.Contains(raw, "-") || strings.Contains(raw, " ") {
+					if replaced, ok := replaceDigitsPreserveSeparators(raw, clean); ok {
+						pkg.Metadata.Identifiers[i].Value = replaced
+					} else {
+						pkg.Metadata.Identifiers[i].Value = clean
+					}
+				} else {
+					pkg.Metadata.Identifiers[i].Value = clean
+				}
+			}
+		}
+		found = true
+	}
+
+	if found {
+		return
+	}
+
+	// If missing, add in a version-appropriate and minimally-invasive form:
+	// - EPUB2 commonly uses opf:scheme="ISBN" + plain value
+	// - EPUB3 often prefers URN form (urn:isbn:...) without opf:scheme
+	if pkg.isEPUB3() {
+		pkg.Metadata.Identifiers = append(pkg.Metadata.Identifiers, IDMeta{Value: "urn:isbn:" + clean})
+		return
+	}
+	if inputHasSep {
+		pkg.Metadata.Identifiers = append(pkg.Metadata.Identifiers, IDMeta{Scheme: "ISBN", Value: trimmed})
+		return
+	}
+	pkg.Metadata.Identifiers = append(pkg.Metadata.Identifiers, IDMeta{Scheme: "ISBN", Value: clean})
+}
+
+func replaceDigitsPreserveSeparators(template, digits string) (string, bool) {
+	// Count digit-like chars (0-9, X/x) in template and ensure it matches.
+	count := 0
+	for _, r := range template {
+		if (r >= '0' && r <= '9') || r == 'X' || r == 'x' {
+			count++
+		}
+	}
+	if count != len(digits) {
+		return "", false
+	}
+
+	out := make([]rune, 0, len(template))
+	j := 0
+	for _, r := range template {
+		if (r >= '0' && r <= '9') || r == 'X' || r == 'x' {
+			out = append(out, rune(digits[j]))
+			j++
+			continue
+		}
+		out = append(out, r)
+	}
+	return string(out), true
 }
 
 // SetASIN sets the ASIN identifier.
