@@ -1082,6 +1082,46 @@ func TestSetISBN_UpdatesAllISBNEntries(t *testing.T) {
 	}
 }
 
+// TestSetISBN_NormalizesFullwidthSeparators tests that fullwidth separators
+// (U+FF0D FULLWIDTH HYPHEN-MINUS) are normalized to ASCII hyphen (U+002D).
+func TestSetISBN_NormalizesFullwidthSeparators(t *testing.T) {
+	pkg := createEmptyPackage()
+	// Original ISBN with fullwidth hyphen-minus (U+FF0D): 978－7－300－23400-7
+	pkg.Metadata.Identifiers = []IDMeta{
+		{Scheme: "ISBN", Value: "978－7－300－23400-7"},
+	}
+
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	// Fullwidth separators should be normalized to regular hyphens
+	if got := pkg.Metadata.Identifiers[0].Value; got != "978-0-306-40615-7" {
+		t.Fatalf("Expected fullwidth separators normalized to '978-0-306-40615-7', got %q", got)
+	}
+}
+
+// TestSetISBN_ReplacesInvalidFormat tests that ISBN with invalid characters
+// (e.g., "/I·246" suffix) is replaced with clean ISBN value.
+func TestSetISBN_ReplacesInvalidFormat(t *testing.T) {
+	pkg := createEmptyPackage()
+	// Original ISBN with invalid suffix: 7-80639-918-6/I·246
+	pkg.Metadata.Identifiers = []IDMeta{
+		{Scheme: "ISBN", Value: "7-80639-918-6/I·246"},
+	}
+
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	// Invalid format should be replaced with clean ISBN
+	if got := pkg.Metadata.Identifiers[0].Value; got != "9780306406157" {
+		t.Fatalf("Expected clean ISBN '9780306406157', got %q", got)
+	}
+}
+
 func TestSetISBN_ConvertsValuePrefixISBN_ToSchemeForEPUB2(t *testing.T) {
 	pkg := createEmptyPackage()
 	pkg.Version = "2.0"

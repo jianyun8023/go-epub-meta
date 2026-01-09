@@ -748,12 +748,17 @@ func (pkg *Package) SetISBN(isbn string) {
 func replaceDigitsPreserveSeparators(template, digits string) (string, bool) {
 	// Count digit-like chars (0-9, X/x) in template and ensure it matches.
 	count := 0
+	hasInvalidChars := false
 	for _, r := range template {
 		if (r >= '0' && r <= '9') || r == 'X' || r == 'x' {
 			count++
+		} else if r != '-' && r != ' ' && r != '－' && r != '　' {
+			// Template contains invalid ISBN characters (e.g., "/I·246")
+			// Don't preserve such formats
+			hasInvalidChars = true
 		}
 	}
-	if count != len(digits) {
+	if count != len(digits) || hasInvalidChars {
 		return "", false
 	}
 
@@ -763,6 +768,17 @@ func replaceDigitsPreserveSeparators(template, digits string) (string, bool) {
 		if (r >= '0' && r <= '9') || r == 'X' || r == 'x' {
 			out = append(out, rune(digits[j]))
 			j++
+			continue
+		}
+		// Normalize fullwidth separators to standard ASCII
+		// U+FF0D (FULLWIDTH HYPHEN-MINUS) -> U+002D (HYPHEN-MINUS)
+		// U+3000 (IDEOGRAPHIC SPACE) -> U+0020 (SPACE)
+		if r == '－' { // U+FF0D FULLWIDTH HYPHEN-MINUS
+			out = append(out, '-')
+			continue
+		}
+		if r == '　' { // U+3000 IDEOGRAPHIC SPACE
+			out = append(out, ' ')
 			continue
 		}
 		out = append(out, r)
