@@ -311,7 +311,7 @@ func TestNormalizeIdentifiersEdgeCases(t *testing.T) {
 
 	// Only commas
 	result = normalizeIdentifiers(",,,")
-	if result != ",,," {
-		t.Errorf("Expected ',,,', got '%s'", result)
+	if result != "" {
+		t.Errorf("Expected empty, got '%s'", result)
 	}
 }

@@ -542,11 +542,19 @@ func normalizeDate(d string) string {
 }
 
 func normalizeIdentifiers(ids string) string {
-	// Split by comma, trim, sort, rejoin
+	// Split by comma, trim, filter calibre UUID, sort, rejoin
 	parts := strings.Split(ids, ",")
+	var filtered []string
 	for i := range parts {
-		parts[i] = strings.ToLower(strings.TrimSpace(parts[i]))
+		part := strings.ToLower(strings.TrimSpace(parts[i]))
+		// Skip calibre UUID (e.g., "calibre:e341dd8c-68a5-402e-bcde-f9fa91cf8d10")
+		if strings.HasPrefix(part, "calibre:") {
+			continue
+		}
+		if part != "" {
+			filtered = append(filtered, part)
+		}
 	}
-	sort.Strings(parts)
-	return strings.Join(parts, ",")
+	sort.Strings(filtered)
+	return strings.Join(filtered, ",")
 }
