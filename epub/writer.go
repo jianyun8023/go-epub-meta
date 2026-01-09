@@ -2,7 +2,6 @@ package epub
 
 import (
 	"archive/zip"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"os"
@@ -44,13 +43,12 @@ func (r *Reader) Save(outputPath string) error {
 	}
 
 	// 4. Prepare modified content
-	// Serialize OPF
-	opfContent, err := xml.MarshalIndent(r.Package, "", "  ")
+	// Serialize OPF using etree for better namespace control
+	opfContent, err := r.Package.marshalOPFWithEtree()
 	if err != nil {
 		return fmt.Errorf("failed to marshal OPF: %w", err)
 	}
-	// Add XML header
-	opfContent = append([]byte(xml.Header), opfContent...)
+	// marshalOPFWithEtree already includes XML header
 
 	// Track which files we've written
 	writtenFiles := make(map[string]bool)

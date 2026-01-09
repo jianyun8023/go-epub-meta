@@ -301,7 +301,6 @@ func parsePackageFromEtree(doc *etree.Document) (*Package, error) {
 		Version:          root.SelectAttrValue("version", ""),
 		UniqueIdentifier: root.SelectAttrValue("unique-identifier", ""),
 		Prefix:           root.SelectAttrValue("prefix", ""),
-		Xmlns:            root.SelectAttrValue("xmlns", ""),
 		Dir:              root.SelectAttrValue("dir", ""),
 		Id:               root.SelectAttrValue("id", ""),
 	}

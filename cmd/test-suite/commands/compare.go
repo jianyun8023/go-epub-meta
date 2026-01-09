@@ -533,8 +533,13 @@ func normalizeLanguage(lang string) string {
 }
 
 func normalizeDate(d string) string {
-	// Extract YYYY-MM-DD
-	// Handle 2023-12-31T16:00:00+00:00 -> 2023-12-31
+	// Try parsing as RFC3339 (e.g., 2023-12-31T16:00:00+00:00)
+	if t, err := time.Parse(time.RFC3339, d); err == nil {
+		// Convert to local time (assuming user's perspective)
+		return t.In(time.Local).Format("2006-01-02")
+	}
+
+	// Fallback: Extract YYYY-MM-DD
 	if len(d) >= 10 {
 		return d[:10]
 	}
@@ -547,8 +552,8 @@ func normalizeIdentifiers(ids string) string {
 	var filtered []string
 	for i := range parts {
 		part := strings.ToLower(strings.TrimSpace(parts[i]))
-		// Skip calibre UUID (e.g., "calibre:e341dd8c-68a5-402e-bcde-f9fa91cf8d10")
-		if strings.HasPrefix(part, "calibre:") {
+		// Skip calibre UUID (e.g., "calibre:e341dd8c-...") and generic UUID ("uuid:...")
+		if strings.HasPrefix(part, "calibre:") || strings.HasPrefix(part, "uuid:") {
 			continue
 		}
 		if part != "" {

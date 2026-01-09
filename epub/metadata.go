@@ -667,12 +667,29 @@ func (pkg *Package) SetIdentifier(scheme, value string) {
 }
 
 // SetISBN sets the ISBN identifier.
+// For EPUB 2: uses opf:scheme="ISBN"
+// For EPUB 3: uses "isbn:" prefix in value + meta refines for identifier-type (ONIX codelist5)
+//
+//	This hybrid approach ensures both EPUB 3.2 compliance and Calibre compatibility.
 func (pkg *Package) SetISBN(isbn string) {
 	trimmed := strings.TrimSpace(isbn)
 	clean := strings.TrimSpace(isbn)
 	clean = strings.ReplaceAll(clean, "-", "")
 	clean = strings.ReplaceAll(clean, " ", "")
 	inputHasSep := strings.Contains(trimmed, "-") || strings.Contains(trimmed, " ")
+
+	// Determine ISBN type (ISBN-10 vs ISBN-13)
+	// ONIX codelist5: 02 = ISBN-10, 15 = ISBN-13
+	onixCode := "15" // Default to ISBN-13
+	if len(clean) == 10 {
+		onixCode = "02"
+	}
+
+	// Generate a unique ID for the identifier
+	isbnID := "pub-isbn"
+	if onixCode == "02" {
+		isbnID = "pub-isbn10"
+	}
 
 	// Respect original format: update existing ISBN-like identifiers in-place.
 	found := false
@@ -682,67 +699,80 @@ func (pkg *Package) SetISBN(isbn string) {
 			continue
 		}
 
-		raw := strings.TrimSpace(pkg.Metadata.Identifiers[i].Value)
-		lower := strings.ToLower(raw)
-		switch {
-		case strings.HasPrefix(lower, "urn:isbn:"):
-			// Standards-friendly (EPUB3-preferred) URN form.
+		if pkg.isEPUB3() {
+			// EPUB 3: Use "isbn:" prefix for Calibre compatibility + meta refines for standard compliance
 			pkg.Metadata.Identifiers[i].Scheme = ""
-			pkg.Metadata.Identifiers[i].Value = "urn:isbn:" + clean
-		case strings.HasPrefix(lower, "isbn:"):
-			// "isbn:" prefix inside value is a common but non-standard EPUB2 pattern.
-			// Normalize to EPUB2/3 standard representation based on declared version.
-			if pkg.isEPUB3() {
-				pkg.Metadata.Identifiers[i].Scheme = ""
-				pkg.Metadata.Identifiers[i].Value = "urn:isbn:" + clean
+			pkg.Metadata.Identifiers[i].ID = isbnID
+			if inputHasSep {
+				pkg.Metadata.Identifiers[i].Value = "isbn:" + trimmed
 			} else {
-				pkg.Metadata.Identifiers[i].Scheme = "ISBN"
-				if inputHasSep {
-					pkg.Metadata.Identifiers[i].Value = trimmed
-				} else {
-					pkg.Metadata.Identifiers[i].Value = clean
-				}
+				pkg.Metadata.Identifiers[i].Value = "isbn:" + clean
 			}
-		default:
-			if pkg.isEPUB3() {
-				// EPUB3: prefer URN form.
-				pkg.Metadata.Identifiers[i].Scheme = ""
-				pkg.Metadata.Identifiers[i].Value = "urn:isbn:" + clean
+			// Update or add the refines meta
+			pkg.setIdentifierTypeMeta(isbnID, onixCode)
+		} else {
+			// EPUB 2: use opf:scheme="ISBN"
+			pkg.Metadata.Identifiers[i].Scheme = "ISBN"
+			pkg.Metadata.Identifiers[i].ID = ""
+			if inputHasSep {
+				pkg.Metadata.Identifiers[i].Value = trimmed
 			} else {
-				// EPUB2: prefer opf:scheme="ISBN" + value (preserve separators when possible).
-				pkg.Metadata.Identifiers[i].Scheme = "ISBN"
-				if inputHasSep {
-					pkg.Metadata.Identifiers[i].Value = trimmed
-				} else if strings.Contains(raw, "-") || strings.Contains(raw, " ") {
-					if replaced, ok := replaceDigitsPreserveSeparators(raw, clean); ok {
-						pkg.Metadata.Identifiers[i].Value = replaced
-					} else {
-						pkg.Metadata.Identifiers[i].Value = clean
-					}
-				} else {
-					pkg.Metadata.Identifiers[i].Value = clean
-				}
+				pkg.Metadata.Identifiers[i].Value = clean
 			}
 		}
 		found = true
+		break // Only update the first ISBN found
 	}
 
 	if found {
 		return
 	}
 
-	// If missing, add in a version-appropriate and minimally-invasive form:
-	// - EPUB2 commonly uses opf:scheme="ISBN" + plain value
-	// - EPUB3 often prefers URN form (urn:isbn:...) without opf:scheme
+	// If missing, add in a version-appropriate form
 	if pkg.isEPUB3() {
-		pkg.Metadata.Identifiers = append(pkg.Metadata.Identifiers, IDMeta{Value: "urn:isbn:" + clean})
+		// EPUB 3: "isbn:" prefix + id + meta refines
+		val := clean
+		if inputHasSep {
+			val = trimmed
+		}
+		pkg.Metadata.Identifiers = append(pkg.Metadata.Identifiers, IDMeta{
+			ID:    isbnID,
+			Value: "isbn:" + val,
+		})
+		pkg.setIdentifierTypeMeta(isbnID, onixCode)
 		return
 	}
+
+	// EPUB 2: opf:scheme="ISBN"
 	if inputHasSep {
 		pkg.Metadata.Identifiers = append(pkg.Metadata.Identifiers, IDMeta{Scheme: "ISBN", Value: trimmed})
 		return
 	}
 	pkg.Metadata.Identifiers = append(pkg.Metadata.Identifiers, IDMeta{Scheme: "ISBN", Value: clean})
+}
+
+// setIdentifierTypeMeta adds or updates a <meta refines="#id" property="identifier-type"> element.
+// Uses ONIX codelist5 scheme for standard identifier types.
+func (pkg *Package) setIdentifierTypeMeta(idRef, onixCode string) {
+	refinesValue := "#" + idRef
+
+	// Check if meta already exists
+	for i := range pkg.Metadata.Meta {
+		if pkg.Metadata.Meta[i].Refines == refinesValue &&
+			pkg.Metadata.Meta[i].Property == "identifier-type" {
+			pkg.Metadata.Meta[i].Scheme = "onix:codelist5"
+			pkg.Metadata.Meta[i].Value = onixCode
+			return
+		}
+	}
+
+	// Add new meta
+	pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
+		Refines:  refinesValue,
+		Property: "identifier-type",
+		Scheme:   "onix:codelist5",
+		Value:    onixCode,
+	})
 }
 
 func replaceDigitsPreserveSeparators(template, digits string) (string, bool) {

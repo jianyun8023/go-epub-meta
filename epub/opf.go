@@ -18,8 +18,7 @@ type Package struct {
 	Version          string   `xml:"version,attr"`
 	UniqueIdentifier string   `xml:"unique-identifier,attr"`
 	Prefix           string   `xml:"prefix,attr,omitempty"` // EPUB 3
-	Xmlns            string   `xml:"xmlns,attr,omitempty"`
-	Dir              string   `xml:"dir,attr,omitempty"` // text direction
+	Dir              string   `xml:"dir,attr,omitempty"`    // text direction
 	Id               string   `xml:"id,attr,omitempty"`
 
 	Metadata Metadata `xml:"metadata"`
@@ -35,7 +34,6 @@ type PackageLoose struct {
 	Version          string   `xml:"version,attr"`
 	UniqueIdentifier string   `xml:"unique-identifier,attr"`
 	Prefix           string   `xml:"prefix,attr,omitempty"`
-	Xmlns            string   `xml:"xmlns,attr,omitempty"`
 	Dir              string   `xml:"dir,attr,omitempty"`
 	Id               string   `xml:"id,attr,omitempty"`
 
@@ -52,7 +50,6 @@ func (pl *PackageLoose) ToPackage() Package {
 		Version:          pl.Version,
 		UniqueIdentifier: pl.UniqueIdentifier,
 		Prefix:           pl.Prefix,
-		Xmlns:            pl.Xmlns,
 		Dir:              pl.Dir,
 		Id:               pl.Id,
 		Metadata:         pl.Metadata,
