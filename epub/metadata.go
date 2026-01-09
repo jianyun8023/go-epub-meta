@@ -50,10 +50,14 @@ func (pkg *Package) SetTitleSort(sort string) {
 		}
 	}
 	if !found {
-		newMeta = append(newMeta, Meta{
-			Name:    "calibre:title_sort",
-			Content: sort,
-		})
+		// Only add legacy tag if not EPUB3 or if strictly required.
+		// For EPUB3, we only maintain if present (which is handled above).
+		if !pkg.isEPUB3() {
+			newMeta = append(newMeta, Meta{
+				Name:    "calibre:title_sort",
+				Content: sort,
+			})
+		}
 	}
 	pkg.Metadata.Meta = newMeta
 }
@@ -318,31 +322,37 @@ func (pkg *Package) SetSeries(series string) {
 				Property: "collection-type",
 				Value:    "series",
 			})
-			return
+		} else {
+			// Update existing belongs-to-collection value
+			for i := range pkg.Metadata.Meta {
+				if pkg.Metadata.Meta[i].Property == "belongs-to-collection" && pkg.Metadata.Meta[i].ID == collectionID {
+					pkg.Metadata.Meta[i].Value = series
+					break
+				}
+			}
+			// Ensure collection-type=series exists
+			foundType := false
+			for i := range pkg.Metadata.Meta {
+				if pkg.Metadata.Meta[i].Refines == "#"+collectionID && pkg.Metadata.Meta[i].Property == "collection-type" {
+					pkg.Metadata.Meta[i].Value = "series"
+					foundType = true
+					break
+				}
+			}
+			if !foundType {
+				pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
+					Refines:  "#" + collectionID,
+					Property: "collection-type",
+					Value:    "series",
+				})
+			}
 		}
 
-		// Update existing belongs-to-collection value
+		// Compatibility: Also update legacy calibre:series IF IT EXISTS
 		for i := range pkg.Metadata.Meta {
-			if pkg.Metadata.Meta[i].Property == "belongs-to-collection" && pkg.Metadata.Meta[i].ID == collectionID {
-				pkg.Metadata.Meta[i].Value = series
-				break
+			if pkg.Metadata.Meta[i].Name == "calibre:series" {
+				pkg.Metadata.Meta[i].Content = series
 			}
-		}
-		// Ensure collection-type=series exists
-		foundType := false
-		for i := range pkg.Metadata.Meta {
-			if pkg.Metadata.Meta[i].Refines == "#"+collectionID && pkg.Metadata.Meta[i].Property == "collection-type" {
-				pkg.Metadata.Meta[i].Value = "series"
-				foundType = true
-				break
-			}
-		}
-		if !foundType {
-			pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
-				Refines:  "#" + collectionID,
-				Property: "collection-type",
-				Value:    "series",
-			})
 		}
 		return
 	}
@@ -414,8 +424,15 @@ func (pkg *Package) SetSeriesIndex(index string) {
 					Value:    index,
 				})
 			}
-			return
 		}
+
+		// Compatibility: Also update legacy calibre:series_index IF IT EXISTS
+		for i := range pkg.Metadata.Meta {
+			if pkg.Metadata.Meta[i].Name == "calibre:series_index" {
+				pkg.Metadata.Meta[i].Content = index
+			}
+		}
+		return
 	}
 
 	newMeta := []Meta{}

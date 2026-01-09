@@ -153,9 +153,13 @@ func (r *Reader) SetCover(data []byte, mediaType string) {
 	}
 
 	if !metaFound {
-		r.Package.Metadata.Meta = append(r.Package.Metadata.Meta, Meta{
-			Name:    "cover",
-			Content: itemID,
-		})
+		// Only add legacy tag if not EPUB3 or if strictly required.
+		// For EPUB3, we only maintain if present (which is handled above).
+		if !r.Package.isEPUB3() {
+			r.Package.Metadata.Meta = append(r.Package.Metadata.Meta, Meta{
+				Name:    "cover",
+				Content: itemID,
+			})
+		}
 	}
 }
