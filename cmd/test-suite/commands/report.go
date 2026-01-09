@@ -35,6 +35,7 @@ type Record struct {
 	GolibriTitle       string
 	GolibriAuthor      string
 	GolibriPublisher   string
+	GolibriProducer    string
 	GolibriPublished   string
 	GolibriSeries      string
 	GolibriLanguage    string
@@ -43,7 +44,6 @@ type Record struct {
 	GolibriError       string
 	GolibriTime        string
 	EbookTitle         string
-	EbookTitleSort     string
 	EbookAuthor        string
 	EbookPublisher     string
 	EbookProducer      string
@@ -101,15 +101,15 @@ func loadRecords(filename string) ([]Record, error) {
 			GolibriTitle:       row[1],
 			GolibriAuthor:      row[2],
 			GolibriPublisher:   row[3],
-			GolibriPublished:   row[4],
-			GolibriSeries:      row[5],
-			GolibriLanguage:    row[6],
-			GolibriIdentifiers: row[7],
-			GolibriCover:       row[8],
-			GolibriError:       row[9],
-			GolibriTime:        row[10],
-			EbookTitle:         row[11],
-			EbookTitleSort:     row[12],
+			GolibriProducer:    row[4],
+			GolibriPublished:   row[5],
+			GolibriSeries:      row[6],
+			GolibriLanguage:    row[7],
+			GolibriIdentifiers: row[8],
+			GolibriCover:       row[9],
+			GolibriError:       row[10],
+			GolibriTime:        row[11],
+			EbookTitle:         row[12],
 			EbookAuthor:        row[13],
 			EbookPublisher:     row[14],
 			EbookProducer:      row[15],
@@ -226,18 +226,6 @@ func analyzeMissingFields(records []Record) {
 	fmt.Printf("  - golibri中有此字段: 0本书 (0%%)\n")
 	fmt.Printf("  - 主要工具: calibre占%.1f%%\n", float64(producerTypes["calibre"])/float64(producerCount)*100)
 	fmt.Printf("  - 重要性: ⭐⭐⭐ 中 (对普通用户价值较低)\n\n")
-
-	// TitleSort
-	titleSortCount := 0
-	for _, r := range records {
-		if r.EbookTitleSort != "" {
-			titleSortCount++
-		}
-	}
-	fmt.Printf("Title Sort (排序标题):\n")
-	fmt.Printf("  - ebook-meta中有此字段: %d本书 (%.1f%%)\n", titleSortCount, float64(titleSortCount)/float64(len(records))*100)
-	fmt.Printf("  - golibri中有此字段: 0本书 (0%%)\n")
-	fmt.Printf("  - 重要性: ⭐⭐ 低 (主要用于图书管理软件排序)\n\n")
 }
 
 func analyzeFieldMismatches(records []Record) {

@@ -90,38 +90,6 @@ func TestSetTitleOverwrite(t *testing.T) {
 	}
 }
 
-func TestGetTitleSort(t *testing.T) {
-	pkg := createTestPackage()
-	titleSort := pkg.GetTitleSort()
-	if titleSort != "Title, Test" {
-		t.Errorf("Expected 'Title, Test', got '%s'", titleSort)
-	}
-}
-
-func TestGetTitleSortEmpty(t *testing.T) {
-	pkg := createEmptyPackage()
-	titleSort := pkg.GetTitleSort()
-	if titleSort != "" {
-		t.Errorf("Expected empty string, got '%s'", titleSort)
-	}
-}
-
-func TestSetTitleSort(t *testing.T) {
-	pkg := createEmptyPackage()
-	pkg.SetTitleSort("Sort, Title")
-	if pkg.GetTitleSort() != "Sort, Title" {
-		t.Errorf("Expected 'Sort, Title', got '%s'", pkg.GetTitleSort())
-	}
-}
-
-func TestSetTitleSortUpdate(t *testing.T) {
-	pkg := createTestPackage()
-	pkg.SetTitleSort("New Sort Title")
-	if pkg.GetTitleSort() != "New Sort Title" {
-		t.Errorf("Expected 'New Sort Title', got '%s'", pkg.GetTitleSort())
-	}
-}
-
 // =============================================================================
 // Author Tests
 // =============================================================================

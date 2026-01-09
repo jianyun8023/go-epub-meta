@@ -26,21 +26,6 @@ func (pkg *Package) SetTitle(title string) {
 	pkg.Metadata.Titles = []SimpleMeta{{Value: title}}
 }
 
-// GetTitleSort returns the sortable title.
-func (pkg *Package) GetTitleSort() string {
-	for _, m := range pkg.Metadata.Meta {
-		if m.Name == "calibre:title_sort" {
-			return m.Content
-		}
-	}
-	return ""
-}
-
-// SetTitleSort sets the sortable title.
-func (pkg *Package) SetTitleSort(sort string) {
-	pkg.setLegacyMeta("calibre:title_sort", sort)
-}
-
 // setLegacyMeta updates a legacy EPUB 2 meta tag if it exists.
 // If it does not exist, it adds it ONLY if we are NOT in EPUB 3 mode.
 // This preserves the cleanliness of EPUB 3 files while maintaining compatibility for EPUB 2.
@@ -264,6 +249,14 @@ func (pkg *Package) GetSeriesIndex() string {
 		}
 	}
 
+	// EPUB 3 fallback: <meta property="calibre:series_index">
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "calibre:series_index" && strings.TrimSpace(m.Value) != "" {
+			return m.Value
+		}
+	}
+
+	// EPUB 2 / Legacy: <meta name="calibre:series_index" content="...">
 	for _, m := range pkg.Metadata.Meta {
 		if m.Name == "calibre:series_index" {
 			return m.Content
@@ -381,7 +374,18 @@ func (pkg *Package) SetSeriesIndex(index string) {
 			}
 		}
 		if collectionID == "" {
-			// Fallback: behave like EPUB2 if we couldn't establish a collection.
+			// Fallback: No EPUB 3 collection structure exists.
+			// Use calibre:series_index property meta as fallback (similar to SetRating).
+			found := false
+			for i := range pkg.Metadata.Meta {
+				if pkg.Metadata.Meta[i].Property == "calibre:series_index" {
+					pkg.Metadata.Meta[i].Value = index
+					found = true
+				}
+			}
+			if !found {
+				pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{Property: "calibre:series_index", Value: index})
+			}
 		} else {
 			// Update or add group-position
 			foundPos := false

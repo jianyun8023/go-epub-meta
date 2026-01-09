@@ -48,7 +48,6 @@ type ComparisonResult struct {
 
 	// golibri fields
 	GolibriTitle       string
-	GolibriTitleSort   string
 	GolibriAuthor      string
 	GolibriPublisher   string
 	GolibriProducer    string
@@ -62,7 +61,6 @@ type ComparisonResult struct {
 
 	// ebook-meta fields
 	EbookTitle       string
-	EbookTitleSort   string
 	EbookAuthor      string
 	EbookPublisher   string
 	EbookProducer    string
@@ -186,7 +184,6 @@ func compareFile(filepath string) ComparisonResult {
 	} else {
 		defer ep.Close()
 		result.GolibriTitle = ep.Package.GetTitle()
-		result.GolibriTitleSort = ep.Package.GetTitleSort()
 
 		// Format Author to match ebook-meta: "Name [Sort]"
 		author := ep.Package.GetAuthor()
@@ -253,7 +250,6 @@ func parseEbookMeta(output string, result *ComparisonResult) {
 	// Regular expressions to parse ebook-meta output
 	patterns := map[string]*regexp.Regexp{
 		"title":       regexp.MustCompile(`^Title\s*:\s*(.+)$`),
-		"titleSort":   regexp.MustCompile(`^Title sort\s*:\s*(.+)$`),
 		"author":      regexp.MustCompile(`^Author\(s\)\s*:\s*(.+)$`),
 		"publisher":   regexp.MustCompile(`^Publisher\s*:\s*(.+)$`),
 		"producer":    regexp.MustCompile(`^Book Producer\s*:\s*(.+)$`),
@@ -271,8 +267,6 @@ func parseEbookMeta(output string, result *ComparisonResult) {
 
 		if m := patterns["title"].FindStringSubmatch(line); m != nil {
 			result.EbookTitle = strings.TrimSpace(m[1])
-		} else if m := patterns["titleSort"].FindStringSubmatch(line); m != nil {
-			result.EbookTitleSort = strings.TrimSpace(m[1])
 		} else if m := patterns["author"].FindStringSubmatch(line); m != nil {
 			result.EbookAuthor = strings.TrimSpace(m[1])
 		} else if m := patterns["publisher"].FindStringSubmatch(line); m != nil {
@@ -304,9 +298,9 @@ func writeResults(results []ComparisonResult, filename string) error {
 	// Write header
 	header := []string{
 		"FilePath",
-		"GolibriTitle", "GolibriTitleSort", "GolibriAuthor", "GolibriPublisher", "GolibriProducer", "GolibriPublished", "GolibriSeries", "GolibriLanguage", "GolibriIdentifiers", "GolibriCover",
+		"GolibriTitle", "GolibriAuthor", "GolibriPublisher", "GolibriProducer", "GolibriPublished", "GolibriSeries", "GolibriLanguage", "GolibriIdentifiers", "GolibriCover",
 		"GolibriError", "GolibriTime(ms)",
-		"EbookTitle", "EbookTitleSort", "EbookAuthor", "EbookPublisher", "EbookProducer",
+		"EbookTitle", "EbookAuthor", "EbookPublisher", "EbookProducer",
 		"EbookLanguage", "EbookPublished", "EbookIdentifiers", "EbookSeries",
 		"EbookError", "EbookTime(ms)",
 	}
@@ -318,9 +312,9 @@ func writeResults(results []ComparisonResult, filename string) error {
 	for _, r := range results {
 		row := []string{
 			r.FilePath,
-			r.GolibriTitle, r.GolibriTitleSort, r.GolibriAuthor, r.GolibriPublisher, r.GolibriProducer, r.GolibriPublished, r.GolibriSeries, r.GolibriLanguage, r.GolibriIdentifiers, r.GolibriCover,
+			r.GolibriTitle, r.GolibriAuthor, r.GolibriPublisher, r.GolibriProducer, r.GolibriPublished, r.GolibriSeries, r.GolibriLanguage, r.GolibriIdentifiers, r.GolibriCover,
 			r.GolibriError, fmt.Sprintf("%.2f", r.GolibriTime.Seconds()*1000),
-			r.EbookTitle, r.EbookTitleSort, r.EbookAuthor, r.EbookPublisher, r.EbookProducer,
+			r.EbookTitle, r.EbookAuthor, r.EbookPublisher, r.EbookProducer,
 			r.EbookLanguage, r.EbookPublished, r.EbookIdentifiers, r.EbookSeries,
 			r.EbookError, fmt.Sprintf("%.2f", r.EbookTime.Seconds()*1000),
 		}
@@ -347,7 +341,6 @@ func printSummary(results []ComparisonResult) {
 		"Publisher":   {0, 0, 0},
 		"Published":   {0, 0, 0},
 		"Producer":    {0, 0, 0},
-		"TitleSort":   {0, 0, 0},
 	}
 
 	for _, r := range results {
@@ -471,20 +464,6 @@ func printSummary(results []ComparisonResult) {
 				s.match++
 			}
 			fieldStats["Producer"] = s
-		}
-
-		if r.EbookTitleSort != "" {
-			s := fieldStats["TitleSort"]
-			s.ebook++
-			fieldStats["TitleSort"] = s
-		}
-		if r.GolibriTitleSort != "" {
-			s := fieldStats["TitleSort"]
-			s.golibri++
-			if normalize(r.GolibriTitleSort) == normalize(r.EbookTitleSort) {
-				s.match++
-			}
-			fieldStats["TitleSort"] = s
 		}
 	}
 
