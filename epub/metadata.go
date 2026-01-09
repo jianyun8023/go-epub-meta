@@ -472,22 +472,22 @@ func (pkg *Package) SetRating(rating int) {
 	// Convert to Calibre's 0-10 scale
 	calibreRating := fmt.Sprintf("%d", rating*2)
 
-	// Update or add calibre:rating meta
-	// 1. EPUB 3 Property
-	if pkg.isEPUB3() {
-		found := false
-		for i := range pkg.Metadata.Meta {
-			if pkg.Metadata.Meta[i].Property == "calibre:rating" {
-				pkg.Metadata.Meta[i].Value = calibreRating
-				found = true
-			}
-		}
-		if !found {
-			pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{Property: "calibre:rating", Value: calibreRating})
+	// 1. Update existing Property-style metadata (regardless of EPUB version for consistency)
+	// GetRating checks Property-style first, so we must update it if it exists.
+	foundProperty := false
+	for i := range pkg.Metadata.Meta {
+		if pkg.Metadata.Meta[i].Property == "calibre:rating" {
+			pkg.Metadata.Meta[i].Value = calibreRating
+			foundProperty = true
 		}
 	}
 
-	// 2. Legacy/Compatibility Meta (Name)
+	// 2. Add new Property-style only for EPUB 3 (if not already exists)
+	if !foundProperty && pkg.isEPUB3() {
+		pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{Property: "calibre:rating", Value: calibreRating})
+	}
+
+	// 3. Legacy/Compatibility Meta (Name) - update if exists, add only for EPUB 2
 	pkg.setLegacyMeta("calibre:rating", calibreRating)
 }
 
