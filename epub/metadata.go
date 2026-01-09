@@ -38,28 +38,27 @@ func (pkg *Package) GetTitleSort() string {
 
 // SetTitleSort sets the sortable title.
 func (pkg *Package) SetTitleSort(sort string) {
-	newMeta := []Meta{}
+	pkg.setLegacyMeta("calibre:title_sort", sort)
+}
+
+// setLegacyMeta updates a legacy EPUB 2 meta tag if it exists.
+// If it does not exist, it adds it ONLY if we are NOT in EPUB 3 mode.
+// This preserves the cleanliness of EPUB 3 files while maintaining compatibility for EPUB 2.
+func (pkg *Package) setLegacyMeta(name, content string) {
 	found := false
-	for _, m := range pkg.Metadata.Meta {
-		if m.Name == "calibre:title_sort" {
-			m.Content = sort
-			newMeta = append(newMeta, m)
+	for i := range pkg.Metadata.Meta {
+		if pkg.Metadata.Meta[i].Name == name {
+			pkg.Metadata.Meta[i].Content = content
 			found = true
-		} else {
-			newMeta = append(newMeta, m)
 		}
 	}
-	if !found {
-		// Only add legacy tag if not EPUB3 or if strictly required.
-		// For EPUB3, we only maintain if present (which is handled above).
-		if !pkg.isEPUB3() {
-			newMeta = append(newMeta, Meta{
-				Name:    "calibre:title_sort",
-				Content: sort,
-			})
-		}
+
+	if !found && !pkg.isEPUB3() {
+		pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
+			Name:    name,
+			Content: content,
+		})
 	}
-	pkg.Metadata.Meta = newMeta
 }
 
 // GetAuthor returns the first creator.
@@ -349,35 +348,11 @@ func (pkg *Package) SetSeries(series string) {
 		}
 
 		// Compatibility: Also update legacy calibre:series IF IT EXISTS
-		for i := range pkg.Metadata.Meta {
-			if pkg.Metadata.Meta[i].Name == "calibre:series" {
-				pkg.Metadata.Meta[i].Content = series
-			}
-		}
+		pkg.setLegacyMeta("calibre:series", series)
 		return
 	}
 
-	// Remove existing series tag
-	newMeta := []Meta{}
-	found := false
-	for _, m := range pkg.Metadata.Meta {
-		if m.Name == "calibre:series" {
-			// Update existing
-			m.Content = series
-			newMeta = append(newMeta, m)
-			found = true
-		} else {
-			newMeta = append(newMeta, m)
-		}
-	}
-
-	if !found {
-		newMeta = append(newMeta, Meta{
-			Name:    "calibre:series",
-			Content: series,
-		})
-	}
-	pkg.Metadata.Meta = newMeta
+	pkg.setLegacyMeta("calibre:series", series)
 }
 
 // SetSeriesIndex sets the series index using Calibre meta tag.
@@ -427,32 +402,11 @@ func (pkg *Package) SetSeriesIndex(index string) {
 		}
 
 		// Compatibility: Also update legacy calibre:series_index IF IT EXISTS
-		for i := range pkg.Metadata.Meta {
-			if pkg.Metadata.Meta[i].Name == "calibre:series_index" {
-				pkg.Metadata.Meta[i].Content = index
-			}
-		}
+		pkg.setLegacyMeta("calibre:series_index", index)
 		return
 	}
 
-	newMeta := []Meta{}
-	found := false
-	for _, m := range pkg.Metadata.Meta {
-		if m.Name == "calibre:series_index" {
-			m.Content = index
-			newMeta = append(newMeta, m)
-			found = true
-		} else {
-			newMeta = append(newMeta, m)
-		}
-	}
-	if !found {
-		newMeta = append(newMeta, Meta{
-			Name:    "calibre:series_index",
-			Content: index,
-		})
-	}
-	pkg.Metadata.Meta = newMeta
+	pkg.setLegacyMeta("calibre:series_index", index)
 }
 
 // GetRating returns the book rating (0-5 scale, compatible with ebook-meta).
@@ -515,27 +469,22 @@ func (pkg *Package) SetRating(rating int) {
 	calibreRating := fmt.Sprintf("%d", rating*2)
 
 	// Update or add calibre:rating meta
-	newMeta := []Meta{}
-	found := false
-	for _, m := range pkg.Metadata.Meta {
-		if m.Name == "calibre:rating" {
-			m.Content = calibreRating
-			found = true
+	// 1. EPUB 3 Property
+	if pkg.isEPUB3() {
+		found := false
+		for i := range pkg.Metadata.Meta {
+			if pkg.Metadata.Meta[i].Property == "calibre:rating" {
+				pkg.Metadata.Meta[i].Value = calibreRating
+				found = true
+			}
 		}
-		if m.Property == "calibre:rating" {
-			m.Value = calibreRating
-			found = true
-		}
-		newMeta = append(newMeta, m)
-	}
-	if !found {
-		if pkg.isEPUB3() {
-			newMeta = append(newMeta, Meta{Property: "calibre:rating", Value: calibreRating})
-		} else {
-			newMeta = append(newMeta, Meta{Name: "calibre:rating", Content: calibreRating})
+		if !found {
+			pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{Property: "calibre:rating", Value: calibreRating})
 		}
 	}
-	pkg.Metadata.Meta = newMeta
+
+	// 2. Legacy/Compatibility Meta (Name)
+	pkg.setLegacyMeta("calibre:rating", calibreRating)
 }
 
 // GetSubjects returns a list of tags.
