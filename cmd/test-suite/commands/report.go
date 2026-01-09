@@ -208,11 +208,12 @@ func analyzeMissingFields(records []Record) {
 	fmt.Printf("  - 重要性: ⭐⭐⭐⭐⭐ 高\n\n")
 
 	// Producer
-	producerCount := 0
+	ebookProducerCount := 0
+	golibriProducerCount := 0
 	producerTypes := make(map[string]int)
 	for _, r := range records {
 		if r.EbookProducer != "" {
-			producerCount++
+			ebookProducerCount++
 			// Extract producer name (e.g., "calibre (7.2.0)")
 			if strings.Contains(r.EbookProducer, "calibre") {
 				producerTypes["calibre"]++
@@ -220,11 +221,16 @@ func analyzeMissingFields(records []Record) {
 				producerTypes["其他"]++
 			}
 		}
+		if r.GolibriProducer != "" {
+			golibriProducerCount++
+		}
 	}
 	fmt.Printf("Producer (制作工具):\n")
-	fmt.Printf("  - ebook-meta中有此字段: %d本书 (%.1f%%)\n", producerCount, float64(producerCount)/float64(len(records))*100)
-	fmt.Printf("  - golibri中有此字段: 0本书 (0%%)\n")
-	fmt.Printf("  - 主要工具: calibre占%.1f%%\n", float64(producerTypes["calibre"])/float64(producerCount)*100)
+	fmt.Printf("  - ebook-meta中有此字段: %d本书 (%.1f%%)\n", ebookProducerCount, float64(ebookProducerCount)/float64(len(records))*100)
+	fmt.Printf("  - golibri中有此字段: %d本书 (%.1f%%)\n", golibriProducerCount, float64(golibriProducerCount)/float64(len(records))*100)
+	if ebookProducerCount > 0 {
+		fmt.Printf("  - 主要工具: calibre占%.1f%%\n", float64(producerTypes["calibre"])/float64(ebookProducerCount)*100)
+	}
 	fmt.Printf("  - 重要性: ⭐⭐⭐ 中 (对普通用户价值较低)\n\n")
 }
 
