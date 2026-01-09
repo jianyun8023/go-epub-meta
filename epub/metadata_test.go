@@ -90,38 +90,6 @@ func TestSetTitleOverwrite(t *testing.T) {
 	}
 }
 
-func TestGetTitleSort(t *testing.T) {
-	pkg := createTestPackage()
-	titleSort := pkg.GetTitleSort()
-	if titleSort != "Title, Test" {
-		t.Errorf("Expected 'Title, Test', got '%s'", titleSort)
-	}
-}
-
-func TestGetTitleSortEmpty(t *testing.T) {
-	pkg := createEmptyPackage()
-	titleSort := pkg.GetTitleSort()
-	if titleSort != "" {
-		t.Errorf("Expected empty string, got '%s'", titleSort)
-	}
-}
-
-func TestSetTitleSort(t *testing.T) {
-	pkg := createEmptyPackage()
-	pkg.SetTitleSort("Sort, Title")
-	if pkg.GetTitleSort() != "Sort, Title" {
-		t.Errorf("Expected 'Sort, Title', got '%s'", pkg.GetTitleSort())
-	}
-}
-
-func TestSetTitleSortUpdate(t *testing.T) {
-	pkg := createTestPackage()
-	pkg.SetTitleSort("New Sort Title")
-	if pkg.GetTitleSort() != "New Sort Title" {
-		t.Errorf("Expected 'New Sort Title', got '%s'", pkg.GetTitleSort())
-	}
-}
-
 // =============================================================================
 // Author Tests
 // =============================================================================
@@ -658,6 +626,60 @@ func TestSetSeriesIndexEPUB3_NewSeriesCreated(t *testing.T) {
 	}
 }
 
+// TestSetSeriesIndexEPUB3_LegacyOnlyFallback tests the fallback behavior when
+// an EPUB3 file has only legacy calibre:series metadata (no belongs-to-collection).
+// This is the scenario fixed by the SetSeriesIndex fallback implementation.
+func TestSetSeriesIndexEPUB3_LegacyOnlyFallback(t *testing.T) {
+	// Create EPUB3 package with only legacy series (no belongs-to-collection)
+	pkg := &Package{
+		Version: "3.0",
+		Metadata: Metadata{
+			Titles: []SimpleMeta{
+				{Value: "EPUB3 Legacy Series Book"},
+			},
+			Languages: []SimpleMeta{
+				{Value: "en"},
+			},
+			Meta: []Meta{
+				// Legacy calibre:series ONLY - no belongs-to-collection
+				{Name: "calibre:series", Content: "Legacy Series Name"},
+			},
+		},
+	}
+
+	// Verify GetSeries returns the legacy series
+	if series := pkg.GetSeries(); series != "Legacy Series Name" {
+		t.Fatalf("Setup error: GetSeries() should return 'Legacy Series Name', got '%s'", series)
+	}
+
+	// Set series index - this should use the fallback (calibre:series_index property)
+	pkg.SetSeriesIndex("7")
+
+	// Verify the index is readable via GetSeriesIndex
+	if idx := pkg.GetSeriesIndex(); idx != "7" {
+		t.Errorf("Expected series index '7', got '%s'", idx)
+	}
+
+	// Verify the fallback was used: should have calibre:series_index property
+	var foundFallbackProperty bool
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "calibre:series_index" && m.Value == "7" {
+			foundFallbackProperty = true
+			break
+		}
+	}
+	if !foundFallbackProperty {
+		t.Error("Expected calibre:series_index property to be set as fallback")
+	}
+
+	// Verify NO belongs-to-collection was created (we don't want to pollute legacy-only files)
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "belongs-to-collection" {
+			t.Error("Should NOT create belongs-to-collection for legacy-only series files")
+		}
+	}
+}
+
 func TestSetSeriesEPUB2_UsesCalibresStyle(t *testing.T) {
 	pkg := createEmptyPackage() // Version is empty, treated as EPUB2
 
@@ -1057,6 +1079,46 @@ func TestSetISBN_UpdatesAllISBNEntries(t *testing.T) {
 	}
 	if got := pkg.Metadata.Identifiers[1].Value; got != "9780306406157" {
 		t.Fatalf("Expected plain update, got %q", got)
+	}
+}
+
+// TestSetISBN_NormalizesFullwidthSeparators tests that fullwidth separators
+// (U+FF0D FULLWIDTH HYPHEN-MINUS) are normalized to ASCII hyphen (U+002D).
+func TestSetISBN_NormalizesFullwidthSeparators(t *testing.T) {
+	pkg := createEmptyPackage()
+	// Original ISBN with fullwidth hyphen-minus (U+FF0D): 978－7－300－23400-7
+	pkg.Metadata.Identifiers = []IDMeta{
+		{Scheme: "ISBN", Value: "978－7－300－23400-7"},
+	}
+
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	// Fullwidth separators should be normalized to regular hyphens
+	if got := pkg.Metadata.Identifiers[0].Value; got != "978-0-306-40615-7" {
+		t.Fatalf("Expected fullwidth separators normalized to '978-0-306-40615-7', got %q", got)
+	}
+}
+
+// TestSetISBN_ReplacesInvalidFormat tests that ISBN with invalid characters
+// (e.g., "/I·246" suffix) is replaced with clean ISBN value.
+func TestSetISBN_ReplacesInvalidFormat(t *testing.T) {
+	pkg := createEmptyPackage()
+	// Original ISBN with invalid suffix: 7-80639-918-6/I·246
+	pkg.Metadata.Identifiers = []IDMeta{
+		{Scheme: "ISBN", Value: "7-80639-918-6/I·246"},
+	}
+
+	pkg.SetISBN("9780306406157")
+
+	if len(pkg.Metadata.Identifiers) != 1 {
+		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
+	}
+	// Invalid format should be replaced with clean ISBN
+	if got := pkg.Metadata.Identifiers[0].Value; got != "9780306406157" {
+		t.Fatalf("Expected clean ISBN '9780306406157', got %q", got)
 	}
 }
 

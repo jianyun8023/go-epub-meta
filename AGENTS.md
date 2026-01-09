@@ -6,6 +6,23 @@
     2. **零外部依赖**: 仅允许 `etree` (XML) + `cobra` (CLI) + 标准库。严禁 CGO/Python/Qt。
     3. **原子写入**: `Write Temp` -> `Validate` -> `os.Rename`。
 
+## 元数据写入策略 (EPUB 3 vs EPUB 2)
+
+本库在写入元数据时，遵循 **“严格符合标准，同时有条件地维护兼容性”** 的原则，具体策略为 **“有则维护，无则不加”**。
+
+### EPUB 3 模式下的行为
+当检测到 EPUB 版本为 3.0 或更高时，写入操作（如设置系列、评分、封面等）会优先使用 EPUB 3 标准的 `property` 属性或专门的 XML 结构（如 `belongs-to-collection`）。
+
+对于非标准的旧式兼容标签（主要是 Calibre 引入的 `calibre:series`, `calibre:rating` 或 EPUB 2 风格的 `<meta name="cover">`）：
+- **如果原文件中已存在这些标签**：本库会**同步更新**它们的值，以保证在旧设备上的兼容性不退化。
+- **如果原文件中不存在这些标签**：本库**不会主动添加**它们。这保持了 EPUB 3 文件的“纯净度”，避免引入不必要的非标准元数据。
+
+### EPUB 2 模式下的行为
+当检测到 EPUB 版本为 2.0 时，本库会自动回退到使用 `name` / `content` 属性的旧式元数据写法（如 `calibre:series`），以确保最大兼容性。
+
+### 开发者提示
+你不需要手动处理这些差异，只需调用统一的 API（如 `SetSeries`, `SetCover`），库内部会自动根据文件版本和现有内容应用上述策略。
+
 ---
 
 ## 👥 智能体团队 (Agent Team)
@@ -162,7 +179,7 @@
   - **原子 in-place**：同路径保存后可重新打开读取到新元数据（`epub/safe_test.go`）。
 
 #### 元数据 API（`epub/metadata_test.go` - 新增 68 个测试）
-- **Title**: GetTitle/SetTitle/GetTitleSort/SetTitleSort
+- **Title**: GetTitle/SetTitle
 - **Author**: GetAuthor/SetAuthor/GetAuthorSort
 - **Description**: GetDescription/SetDescription
 - **Language**: GetLanguage/SetLanguage

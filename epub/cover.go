@@ -153,9 +153,6 @@ func (r *Reader) SetCover(data []byte, mediaType string) {
 	}
 
 	if !metaFound {
-		r.Package.Metadata.Meta = append(r.Package.Metadata.Meta, Meta{
-			Name:    "cover",
-			Content: itemID,
-		})
+		r.Package.setLegacyMeta("cover", itemID)
 	}
 }

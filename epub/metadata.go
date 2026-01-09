@@ -26,36 +26,24 @@ func (pkg *Package) SetTitle(title string) {
 	pkg.Metadata.Titles = []SimpleMeta{{Value: title}}
 }
 
-// GetTitleSort returns the sortable title.
-func (pkg *Package) GetTitleSort() string {
-	for _, m := range pkg.Metadata.Meta {
-		if m.Name == "calibre:title_sort" {
-			return m.Content
-		}
-	}
-	return ""
-}
-
-// SetTitleSort sets the sortable title.
-func (pkg *Package) SetTitleSort(sort string) {
-	newMeta := []Meta{}
+// setLegacyMeta updates a legacy EPUB 2 meta tag if it exists.
+// If it does not exist, it adds it ONLY if we are NOT in EPUB 3 mode.
+// This preserves the cleanliness of EPUB 3 files while maintaining compatibility for EPUB 2.
+func (pkg *Package) setLegacyMeta(name, content string) {
 	found := false
-	for _, m := range pkg.Metadata.Meta {
-		if m.Name == "calibre:title_sort" {
-			m.Content = sort
-			newMeta = append(newMeta, m)
+	for i := range pkg.Metadata.Meta {
+		if pkg.Metadata.Meta[i].Name == name {
+			pkg.Metadata.Meta[i].Content = content
 			found = true
-		} else {
-			newMeta = append(newMeta, m)
 		}
 	}
-	if !found {
-		newMeta = append(newMeta, Meta{
-			Name:    "calibre:title_sort",
-			Content: sort,
+
+	if !found && !pkg.isEPUB3() {
+		pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
+			Name:    name,
+			Content: content,
 		})
 	}
-	pkg.Metadata.Meta = newMeta
 }
 
 // GetAuthor returns the first creator.
@@ -261,6 +249,14 @@ func (pkg *Package) GetSeriesIndex() string {
 		}
 	}
 
+	// EPUB 3 fallback: <meta property="calibre:series_index">
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "calibre:series_index" && strings.TrimSpace(m.Value) != "" {
+			return m.Value
+		}
+	}
+
+	// EPUB 2 / Legacy: <meta name="calibre:series_index" content="...">
 	for _, m := range pkg.Metadata.Meta {
 		if m.Name == "calibre:series_index" {
 			return m.Content
@@ -318,56 +314,38 @@ func (pkg *Package) SetSeries(series string) {
 				Property: "collection-type",
 				Value:    "series",
 			})
-			return
+		} else {
+			// Update existing belongs-to-collection value
+			for i := range pkg.Metadata.Meta {
+				if pkg.Metadata.Meta[i].Property == "belongs-to-collection" && pkg.Metadata.Meta[i].ID == collectionID {
+					pkg.Metadata.Meta[i].Value = series
+					break
+				}
+			}
+			// Ensure collection-type=series exists
+			foundType := false
+			for i := range pkg.Metadata.Meta {
+				if pkg.Metadata.Meta[i].Refines == "#"+collectionID && pkg.Metadata.Meta[i].Property == "collection-type" {
+					pkg.Metadata.Meta[i].Value = "series"
+					foundType = true
+					break
+				}
+			}
+			if !foundType {
+				pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
+					Refines:  "#" + collectionID,
+					Property: "collection-type",
+					Value:    "series",
+				})
+			}
 		}
 
-		// Update existing belongs-to-collection value
-		for i := range pkg.Metadata.Meta {
-			if pkg.Metadata.Meta[i].Property == "belongs-to-collection" && pkg.Metadata.Meta[i].ID == collectionID {
-				pkg.Metadata.Meta[i].Value = series
-				break
-			}
-		}
-		// Ensure collection-type=series exists
-		foundType := false
-		for i := range pkg.Metadata.Meta {
-			if pkg.Metadata.Meta[i].Refines == "#"+collectionID && pkg.Metadata.Meta[i].Property == "collection-type" {
-				pkg.Metadata.Meta[i].Value = "series"
-				foundType = true
-				break
-			}
-		}
-		if !foundType {
-			pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{
-				Refines:  "#" + collectionID,
-				Property: "collection-type",
-				Value:    "series",
-			})
-		}
+		// Compatibility: Also update legacy calibre:series IF IT EXISTS
+		pkg.setLegacyMeta("calibre:series", series)
 		return
 	}
 
-	// Remove existing series tag
-	newMeta := []Meta{}
-	found := false
-	for _, m := range pkg.Metadata.Meta {
-		if m.Name == "calibre:series" {
-			// Update existing
-			m.Content = series
-			newMeta = append(newMeta, m)
-			found = true
-		} else {
-			newMeta = append(newMeta, m)
-		}
-	}
-
-	if !found {
-		newMeta = append(newMeta, Meta{
-			Name:    "calibre:series",
-			Content: series,
-		})
-	}
-	pkg.Metadata.Meta = newMeta
+	pkg.setLegacyMeta("calibre:series", series)
 }
 
 // SetSeriesIndex sets the series index using Calibre meta tag.
@@ -396,7 +374,18 @@ func (pkg *Package) SetSeriesIndex(index string) {
 			}
 		}
 		if collectionID == "" {
-			// Fallback: behave like EPUB2 if we couldn't establish a collection.
+			// Fallback: No EPUB 3 collection structure exists.
+			// Use calibre:series_index property meta as fallback (similar to SetRating).
+			found := false
+			for i := range pkg.Metadata.Meta {
+				if pkg.Metadata.Meta[i].Property == "calibre:series_index" {
+					pkg.Metadata.Meta[i].Value = index
+					found = true
+				}
+			}
+			if !found {
+				pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{Property: "calibre:series_index", Value: index})
+			}
 		} else {
 			// Update or add group-position
 			foundPos := false
@@ -414,28 +403,14 @@ func (pkg *Package) SetSeriesIndex(index string) {
 					Value:    index,
 				})
 			}
-			return
 		}
+
+		// Compatibility: Also update legacy calibre:series_index IF IT EXISTS
+		pkg.setLegacyMeta("calibre:series_index", index)
+		return
 	}
 
-	newMeta := []Meta{}
-	found := false
-	for _, m := range pkg.Metadata.Meta {
-		if m.Name == "calibre:series_index" {
-			m.Content = index
-			newMeta = append(newMeta, m)
-			found = true
-		} else {
-			newMeta = append(newMeta, m)
-		}
-	}
-	if !found {
-		newMeta = append(newMeta, Meta{
-			Name:    "calibre:series_index",
-			Content: index,
-		})
-	}
-	pkg.Metadata.Meta = newMeta
+	pkg.setLegacyMeta("calibre:series_index", index)
 }
 
 // GetRating returns the book rating (0-5 scale, compatible with ebook-meta).
@@ -497,28 +472,23 @@ func (pkg *Package) SetRating(rating int) {
 	// Convert to Calibre's 0-10 scale
 	calibreRating := fmt.Sprintf("%d", rating*2)
 
-	// Update or add calibre:rating meta
-	newMeta := []Meta{}
-	found := false
-	for _, m := range pkg.Metadata.Meta {
-		if m.Name == "calibre:rating" {
-			m.Content = calibreRating
-			found = true
-		}
-		if m.Property == "calibre:rating" {
-			m.Value = calibreRating
-			found = true
-		}
-		newMeta = append(newMeta, m)
-	}
-	if !found {
-		if pkg.isEPUB3() {
-			newMeta = append(newMeta, Meta{Property: "calibre:rating", Value: calibreRating})
-		} else {
-			newMeta = append(newMeta, Meta{Name: "calibre:rating", Content: calibreRating})
+	// 1. Update existing Property-style metadata (regardless of EPUB version for consistency)
+	// GetRating checks Property-style first, so we must update it if it exists.
+	foundProperty := false
+	for i := range pkg.Metadata.Meta {
+		if pkg.Metadata.Meta[i].Property == "calibre:rating" {
+			pkg.Metadata.Meta[i].Value = calibreRating
+			foundProperty = true
 		}
 	}
-	pkg.Metadata.Meta = newMeta
+
+	// 2. Add new Property-style only for EPUB 3 (if not already exists)
+	if !foundProperty && pkg.isEPUB3() {
+		pkg.Metadata.Meta = append(pkg.Metadata.Meta, Meta{Property: "calibre:rating", Value: calibreRating})
+	}
+
+	// 3. Legacy/Compatibility Meta (Name) - update if exists, add only for EPUB 2
+	pkg.setLegacyMeta("calibre:rating", calibreRating)
 }
 
 // GetSubjects returns a list of tags.
@@ -778,12 +748,17 @@ func (pkg *Package) SetISBN(isbn string) {
 func replaceDigitsPreserveSeparators(template, digits string) (string, bool) {
 	// Count digit-like chars (0-9, X/x) in template and ensure it matches.
 	count := 0
+	hasInvalidChars := false
 	for _, r := range template {
 		if (r >= '0' && r <= '9') || r == 'X' || r == 'x' {
 			count++
+		} else if r != '-' && r != ' ' && r != '－' && r != '　' {
+			// Template contains invalid ISBN characters (e.g., "/I·246")
+			// Don't preserve such formats
+			hasInvalidChars = true
 		}
 	}
-	if count != len(digits) {
+	if count != len(digits) || hasInvalidChars {
 		return "", false
 	}
 
@@ -793,6 +768,17 @@ func replaceDigitsPreserveSeparators(template, digits string) (string, bool) {
 		if (r >= '0' && r <= '9') || r == 'X' || r == 'x' {
 			out = append(out, rune(digits[j]))
 			j++
+			continue
+		}
+		// Normalize fullwidth separators to standard ASCII
+		// U+FF0D (FULLWIDTH HYPHEN-MINUS) -> U+002D (HYPHEN-MINUS)
+		// U+3000 (IDEOGRAPHIC SPACE) -> U+0020 (SPACE)
+		if r == '－' { // U+FF0D FULLWIDTH HYPHEN-MINUS
+			out = append(out, '-')
+			continue
+		}
+		if r == '　' { // U+3000 IDEOGRAPHIC SPACE
+			out = append(out, ' ')
 			continue
 		}
 		out = append(out, r)
