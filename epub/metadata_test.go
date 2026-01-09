@@ -626,6 +626,60 @@ func TestSetSeriesIndexEPUB3_NewSeriesCreated(t *testing.T) {
 	}
 }
 
+// TestSetSeriesIndexEPUB3_LegacyOnlyFallback tests the fallback behavior when
+// an EPUB3 file has only legacy calibre:series metadata (no belongs-to-collection).
+// This is the scenario fixed by the SetSeriesIndex fallback implementation.
+func TestSetSeriesIndexEPUB3_LegacyOnlyFallback(t *testing.T) {
+	// Create EPUB3 package with only legacy series (no belongs-to-collection)
+	pkg := &Package{
+		Version: "3.0",
+		Metadata: Metadata{
+			Titles: []SimpleMeta{
+				{Value: "EPUB3 Legacy Series Book"},
+			},
+			Languages: []SimpleMeta{
+				{Value: "en"},
+			},
+			Meta: []Meta{
+				// Legacy calibre:series ONLY - no belongs-to-collection
+				{Name: "calibre:series", Content: "Legacy Series Name"},
+			},
+		},
+	}
+
+	// Verify GetSeries returns the legacy series
+	if series := pkg.GetSeries(); series != "Legacy Series Name" {
+		t.Fatalf("Setup error: GetSeries() should return 'Legacy Series Name', got '%s'", series)
+	}
+
+	// Set series index - this should use the fallback (calibre:series_index property)
+	pkg.SetSeriesIndex("7")
+
+	// Verify the index is readable via GetSeriesIndex
+	if idx := pkg.GetSeriesIndex(); idx != "7" {
+		t.Errorf("Expected series index '7', got '%s'", idx)
+	}
+
+	// Verify the fallback was used: should have calibre:series_index property
+	var foundFallbackProperty bool
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "calibre:series_index" && m.Value == "7" {
+			foundFallbackProperty = true
+			break
+		}
+	}
+	if !foundFallbackProperty {
+		t.Error("Expected calibre:series_index property to be set as fallback")
+	}
+
+	// Verify NO belongs-to-collection was created (we don't want to pollute legacy-only files)
+	for _, m := range pkg.Metadata.Meta {
+		if m.Property == "belongs-to-collection" {
+			t.Error("Should NOT create belongs-to-collection for legacy-only series files")
+		}
+	}
+}
+
 func TestSetSeriesEPUB2_UsesCalibresStyle(t *testing.T) {
 	pkg := createEmptyPackage() // Version is empty, treated as EPUB2
 
