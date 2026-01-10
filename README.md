@@ -176,7 +176,7 @@ Golibri 可作为标准的 Go 包导入，用于在该 Go 项目中处理 EPUB �
 ### 安装依赖
 
 ```bash
-go get github.com/jianyun8023/go-epub-meta/epub
+go get github.com/jianyun8023/golibri/epub
 ```
 
 ### 示例代码
@@ -187,7 +187,7 @@ package main
 import (
     "fmt"
     "strings"
-    "github.com/jianyun8023/go-epub-meta/epub"
+    "github.com/jianyun8023/golibri/epub"
 )
 
 func main() {

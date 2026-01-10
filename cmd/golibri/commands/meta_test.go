@@ -4,11 +4,12 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
-	"golibri/epub"
 	"io"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/jianyun8023/golibri/epub"
 )
 
 // Helper to create a valid minimal EPUB for testing

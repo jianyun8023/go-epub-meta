@@ -3,11 +3,12 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
-	"golibri/epub"
 	"io"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/jianyun8023/golibri/epub"
 
 	"github.com/spf13/cobra"
 )

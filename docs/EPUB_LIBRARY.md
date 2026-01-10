@@ -1,6 +1,6 @@
 # Golibri `epub` 库使用指南（面向开发者）
 
-本指南介绍如何在 Go 项目中使用 `golibri/epub` 读取与写入 EPUB 元数据，并说明 **API 稳定性** 与 **版本锁定** 建议。
+本指南介绍如何在 Go 项目中使用 `github.com/jianyun8023/golibri/epub` 读取与写入 EPUB 元数据，并说明 **API 稳定性** 与 **版本锁定** 建议。
 
 ## 1. API 稳定性说明（重要）
 
@@ -19,31 +19,21 @@
 - 在 `go.mod` 中 **锁定版本 tag**（等项目发布稳定 tag，例如 `v0.4.0` / `v0.5.0` 等）。
 - 避免直接读写 OPF 的内部结构体字段，尽量通过 `Package` 的方法完成业务。
 
+
 ## 2. 导入路径与依赖方式
 
-### 2.1 在本仓库内使用（最简单）
+### 2.1 安装
 
-本仓库 `go.mod` 的 module 目前是 `golibri`，因此在仓库内直接：
-
-```go
-import "golibri/epub"
+```bash
+go get github.com/jianyun8023/golibri/epub
 ```
 
-### 2.2 在外部 Go 项目中使用（当前建议：使用 replace）
-
-由于 module path 目前不是 GitHub 路径，外部项目若要直接 `go get`，可能会遇到 module path 不匹配的问题。现阶段建议用 `replace` 引用仓库源码：
+### 2.2 导入
 
 ```go
-module your-app
-
-go 1.24
-
-require golibri v0.0.0
-
-replace golibri => /abs/path/to/go-epub-meta
+import "github.com/jianyun8023/golibri/epub"
 ```
 
-如果你希望“直接 go get 远端仓库”成为官方支持路径，需要后续把 module path 迁移为 GitHub 路径（这会是一次破坏性变更，通常会配合 release 说明）。
 
 ## 3. 读取元数据（示例）
 
@@ -54,7 +44,7 @@ import (
 	"fmt"
 	"strings"
 
-	"golibri/epub"
+	"github.com/jianyun8023/golibri/epub"
 )
 
 func main() {
@@ -94,7 +84,7 @@ func main() {
 ```go
 package main
 
-import "golibri/epub"
+import "github.com/jianyun8023/golibri/epub"
 
 func main() {
 	book, err := epub.Open("book.epub")

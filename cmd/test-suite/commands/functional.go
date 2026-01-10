@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"golibri/epub"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/jianyun8023/golibri/epub"
 
 	"github.com/spf13/cobra"
 )

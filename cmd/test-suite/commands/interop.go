@@ -3,7 +3,6 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
-	"golibri/epub"
 	"io"
 	"os"
 	"os/exec"
@@ -12,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/jianyun8023/golibri/epub"
 
 	"github.com/spf13/cobra"
 )

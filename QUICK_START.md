@@ -104,7 +104,7 @@ Cover:       Not Found
 ```bash
 # 单元测试
 $ go test ./cmd/golibri/commands/
-ok  	golibri/cmd/golibri/commands	0.816s
+ok  	github.com/jianyun8023/golibri/cmd/golibri/commands	0.816s
 
 # 功能测试
 $ ./test-suite functional cmd/test-suite/testdata/valid --mode all

@@ -164,9 +164,9 @@
 ### 📊 当前覆盖率（2026-01-07 验证）
 | 包 | 覆盖率 | 状态 |
 |----|--------|------|
-| `golibri/epub` | **68.4%** | ✅ 良好 |
-| `golibri/cmd/golibri/commands` | **52.8%** | ✅ 达标 |
-| `golibri/cmd/test-suite/commands` | **7.1%** | ⚠️ 基础 |
+| `github.com/jianyun8023/golibri/epub` | **68.4%** | ✅ 良好 |
+| `github.com/jianyun8023/golibri/cmd/golibri/commands` | **52.8%** | ✅ 达标 |
+| `github.com/jianyun8023/golibri/cmd/test-suite/commands` | **7.1%** | ⚠️ 基础 |
 
 ### ✅ 已覆盖（足以保证"可发布门槛"）
 

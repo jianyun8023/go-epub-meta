@@ -3,13 +3,14 @@ package commands
 import (
 	"encoding/csv"
 	"fmt"
-	"golibri/epub"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/jianyun8023/golibri/epub"
 
 	"github.com/spf13/cobra"
 )

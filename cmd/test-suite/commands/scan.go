@@ -2,11 +2,12 @@ package commands
 
 import (
 	"fmt"
-	"golibri/epub"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+
+	"github.com/jianyun8023/golibri/epub"
 
 	"github.com/spf13/cobra"
 )

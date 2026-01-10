@@ -1,4 +1,4 @@
-module golibri
+module github.com/jianyun8023/golibri
 
 go 1.24.3
 

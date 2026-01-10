@@ -1,7 +1,7 @@
 package main
 
 import (
-	"golibri/cmd/golibri/commands"
+	"github.com/jianyun8023/golibri/cmd/golibri/commands"
 )
 
 func main() {
