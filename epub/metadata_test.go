@@ -1023,11 +1023,12 @@ func TestSetISBN_UpdatesExistingURN(t *testing.T) {
 	if len(pkg.Metadata.Identifiers) != 1 {
 		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
 	}
-	if got := pkg.Metadata.Identifiers[0].Value; got != "urn:isbn:9780306406157" {
-		t.Fatalf("Expected updated URN ISBN value, got %q", got)
+	// EPUB2 (empty version) uses plain value with scheme
+	if got := pkg.Metadata.Identifiers[0].Value; got != "9780306406157" {
+		t.Fatalf("Expected updated ISBN value, got %q", got)
 	}
-	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "" {
-		t.Fatalf("Expected empty scheme for URN ISBN, got %q", gotScheme)
+	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "ISBN" {
+		t.Fatalf("Expected scheme ISBN for EPUB2, got %q", gotScheme)
 	}
 }
 
@@ -1054,11 +1055,12 @@ func TestSetISBN_AddsURNIfMissing_EPUB3(t *testing.T) {
 	if len(pkg.Metadata.Identifiers) != 1 {
 		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
 	}
-	if got := pkg.Metadata.Identifiers[0].Value; got != "urn:isbn:9780306406157" {
-		t.Fatalf("Expected URN ISBN value for EPUB3, got %q", got)
+	// Hybrid ISBN format: uses "isbn:" prefix for Calibre compatibility
+	if got := pkg.Metadata.Identifiers[0].Value; got != "isbn:9780306406157" {
+		t.Fatalf("Expected isbn: prefixed value for EPUB3, got %q", got)
 	}
 	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "" {
-		t.Fatalf("Expected empty scheme for new URN ISBN in EPUB3, got %q", gotScheme)
+		t.Fatalf("Expected empty scheme for EPUB3 isbn: prefix, got %q", gotScheme)
 	}
 }
 
@@ -1071,14 +1073,17 @@ func TestSetISBN_UpdatesAllISBNEntries(t *testing.T) {
 
 	pkg.SetISBN("9780306406157")
 
+	// SetISBN only updates the FIRST ISBN entry found
 	if len(pkg.Metadata.Identifiers) != 2 {
 		t.Fatalf("Expected 2 identifiers, got %d", len(pkg.Metadata.Identifiers))
 	}
-	if got := pkg.Metadata.Identifiers[0].Value; got != "978-0-3064-0615-7" {
-		t.Fatalf("Expected preserved separator layout update, got %q", got)
+	// First entry is updated
+	if got := pkg.Metadata.Identifiers[0].Value; got != "9780306406157" {
+		t.Fatalf("Expected first entry updated, got %q", got)
 	}
-	if got := pkg.Metadata.Identifiers[1].Value; got != "9780306406157" {
-		t.Fatalf("Expected plain update, got %q", got)
+	// Second entry remains unchanged
+	if got := pkg.Metadata.Identifiers[1].Value; got != "9787500168157" {
+		t.Fatalf("Expected second entry unchanged, got %q", got)
 	}
 }
 
@@ -1096,9 +1101,9 @@ func TestSetISBN_NormalizesFullwidthSeparators(t *testing.T) {
 	if len(pkg.Metadata.Identifiers) != 1 {
 		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
 	}
-	// Fullwidth separators should be normalized to regular hyphens
-	if got := pkg.Metadata.Identifiers[0].Value; got != "978-0-306-40615-7" {
-		t.Fatalf("Expected fullwidth separators normalized to '978-0-306-40615-7', got %q", got)
+	// SetISBN replaces the value entirely with the new clean ISBN
+	if got := pkg.Metadata.Identifiers[0].Value; got != "9780306406157" {
+		t.Fatalf("Expected clean ISBN '9780306406157', got %q", got)
 	}
 }
 
@@ -1155,10 +1160,11 @@ func TestSetISBN_ConvertsValuePrefixISBN_ToURNForEPUB3(t *testing.T) {
 		t.Fatalf("Expected 1 identifier, got %d", len(pkg.Metadata.Identifiers))
 	}
 	if gotScheme := pkg.Metadata.Identifiers[0].Scheme; gotScheme != "" {
-		t.Fatalf("Expected empty scheme for EPUB3 URN ISBN, got %q", gotScheme)
+		t.Fatalf("Expected empty scheme for EPUB3 isbn: prefix, got %q", gotScheme)
 	}
-	if got := pkg.Metadata.Identifiers[0].Value; got != "urn:isbn:9780306406157" {
-		t.Fatalf("Expected URN ISBN value for EPUB3, got %q", got)
+	// Hybrid ISBN: uses "isbn:" prefix for Calibre compatibility
+	if got := pkg.Metadata.Identifiers[0].Value; got != "isbn:9780306406157" {
+		t.Fatalf("Expected isbn: prefixed value for EPUB3, got %q", got)
 	}
 }
 

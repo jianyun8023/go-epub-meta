@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -191,7 +190,7 @@ func runInterop(dir string) {
 			continue
 		}
 
-		files, err := findEpubFiles(formatDir)
+		files, err := FindEpubFiles(formatDir)
 		if err != nil {
 			fmt.Printf("Warning: Error scanning %s: %v\n", formatDir, err)
 			continue
@@ -576,79 +575,26 @@ func readWithGolibri(filePath string) (map[string]string, error) {
 	return meta, nil
 }
 
-// readWithEbookMeta reads metadata using ebook-meta command
+// readWithEbookMeta reads metadata using ebook-meta command and returns a field map
 func readWithEbookMeta(filePath string) (map[string]string, error) {
 	output, err := exec.Command("ebook-meta", filePath).Output()
 	if err != nil {
 		return nil, err
 	}
 
-	return parseEbookMetaOutput(string(output)), nil
-}
-
-// parseEbookMetaOutput parses ebook-meta text output into a map
-func parseEbookMetaOutput(output string) map[string]string {
-	meta := make(map[string]string)
-	lines := strings.Split(output, "\n")
-
-	fieldMap := map[string]string{
-		"Title":       "title",
-		"Author(s)":   "author",
-		"Languages":   "language",
-		"Language":    "language",
-		"Publisher":   "publisher",
-		"Published":   "date",
-		"Series":      "series",
-		"Identifiers": "identifiers",
-		"Identifier":  "identifiers",
-		"Tags":        "subjects",
-		"Comments":    "description",
-	}
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		if fieldName, ok := fieldMap[key]; ok {
-			// Remove [sort] suffix for author only (title usually doesn't have it in main field)
-			if fieldName == "author" {
-				value = stripSortSuffix(value)
-			}
-			meta[fieldName] = value
-		}
-
-		// Extract series index from "Series" field (format: "Name #Index")
-		if key == "Series" && strings.Contains(value, "#") {
-			parts := strings.SplitN(value, "#", 2)
-			meta["series"] = strings.TrimSpace(parts[0])
-			if len(parts) > 1 {
-				meta["series_index"] = strings.TrimSpace(parts[1])
-			}
-		}
-	}
-
-	return meta
-}
-
-// stripSortSuffix removes [sort] suffix from a value
-// e.g., "余秋雨 [余秋雨]" -> "余秋雨"
-// e.g., "The Great Gatsby [Great Gatsby, The]" -> "The Great Gatsby"
-// e.g., "Author1 [Sort1] & Author2 [Sort2]" -> "Author1 & Author2"
-func stripSortSuffix(value string) string {
-	// Remove all occurrences of " [anything]"
-	// match space, bracket, anything non-greedy, close bracket
-	re := regexp.MustCompile(`\s*\[.*?\]`)
-	return strings.TrimSpace(re.ReplaceAllString(value, ""))
+	meta := ParseEbookMetaOutput(string(output))
+	return map[string]string{
+		"title":        meta.Title,
+		"author":       meta.Authors,
+		"language":     meta.Language,
+		"publisher":    meta.Publisher,
+		"date":         meta.Published,
+		"series":       meta.Series,
+		"series_index": meta.SeriesIndex,
+		"identifiers":  meta.Identifiers,
+		"subjects":     meta.Tags,
+		"description":  meta.Comments,
+	}, nil
 }
 
 // =============================================================================
@@ -795,7 +741,7 @@ func normalizeForComparison(field, value string) string {
 	switch field {
 	case "title", "author":
 		// Remove [sort] suffix first, then lowercase
-		value = stripSortSuffix(value)
+		value = StripSortSuffix(value)
 		// Normalize delimiters for author comparison
 		if field == "author" {
 			value = strings.ReplaceAll(value, "；", " & ")
@@ -803,11 +749,11 @@ func normalizeForComparison(field, value string) string {
 		}
 		return strings.ToLower(value)
 	case "language":
-		return normalizeLanguage(strings.ToLower(value))
+		return NormalizeLanguage(strings.ToLower(value))
 	case "date":
-		return normalizeDate(value)
+		return NormalizeDate(value)
 	case "identifiers":
-		return normalizeIdentifiers(value)
+		return NormalizeIdentifiers(value)
 	case "series_index":
 		// Normalize "1.0" to "1"
 		val := strings.TrimSuffix(strings.ToLower(value), ".0")

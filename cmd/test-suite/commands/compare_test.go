@@ -79,9 +79,9 @@ func TestNormalizeLanguage(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		result := normalizeLanguage(tc.input)
+		result := NormalizeLanguage(tc.input)
 		if result != tc.expected {
-			t.Errorf("normalizeLanguage(%q) = %q, expected %q", tc.input, result, tc.expected)
+			t.Errorf("NormalizeLanguage(%q) = %q, expected %q", tc.input, result, tc.expected)
 		}
 	}
 }
@@ -113,9 +113,9 @@ func TestNormalizeDate(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		result := normalizeDate(tc.input)
+		result := NormalizeDate(tc.input)
 		if result != tc.expected {
-			t.Errorf("normalizeDate(%q) = %q, expected %q", tc.input, result, tc.expected)
+			t.Errorf("NormalizeDate(%q) = %q, expected %q", tc.input, result, tc.expected)
 		}
 	}
 }
@@ -150,9 +150,9 @@ func TestNormalizeIdentifiers(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		result := normalizeIdentifiers(tc.input)
+		result := NormalizeIdentifiers(tc.input)
 		if result != tc.expected {
-			t.Errorf("normalizeIdentifiers(%q) = %q, expected %q", tc.input, result, tc.expected)
+			t.Errorf("NormalizeIdentifiers(%q) = %q, expected %q", tc.input, result, tc.expected)
 		}
 	}
 }
@@ -185,9 +185,9 @@ func TestFindEpubFiles(t *testing.T) {
 	}
 
 	// Find EPUB files
-	files, err := findEpubFiles(tmpDir)
+	files, err := FindEpubFiles(tmpDir)
 	if err != nil {
-		t.Fatalf("findEpubFiles failed: %v", err)
+		t.Fatalf("FindEpubFiles failed: %v", err)
 	}
 
 	// Should find 3 EPUB files (case insensitive)
@@ -211,9 +211,9 @@ func TestFindEpubFilesEmptyDir(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	files, err := findEpubFiles(tmpDir)
+	files, err := FindEpubFiles(tmpDir)
 	if err != nil {
-		t.Fatalf("findEpubFiles failed: %v", err)
+		t.Fatalf("FindEpubFiles failed: %v", err)
 	}
 
 	if len(files) != 0 {
@@ -222,7 +222,7 @@ func TestFindEpubFilesEmptyDir(t *testing.T) {
 }
 
 func TestFindEpubFilesNonExistentDir(t *testing.T) {
-	files, err := findEpubFiles("/non/existent/directory")
+	files, err := FindEpubFiles("/non/existent/directory")
 	// Should not return an error but an empty list
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -290,13 +290,13 @@ func TestNormalizeEmptyAndWhitespace(t *testing.T) {
 
 func TestNormalizeDateEdgeCases(t *testing.T) {
 	// Exactly 10 characters
-	result := normalizeDate("2023-12-31")
+	result := NormalizeDate("2023-12-31")
 	if result != "2023-12-31" {
 		t.Errorf("Expected '2023-12-31', got '%s'", result)
 	}
 
 	// 9 characters (return as-is)
-	result = normalizeDate("2023-12-3")
+	result = NormalizeDate("2023-12-3")
 	if result != "2023-12-3" {
 		t.Errorf("Expected '2023-12-3', got '%s'", result)
 	}
@@ -304,13 +304,13 @@ func TestNormalizeDateEdgeCases(t *testing.T) {
 
 func TestNormalizeIdentifiersEdgeCases(t *testing.T) {
 	// Single space
-	result := normalizeIdentifiers(" ")
+	result := NormalizeIdentifiers(" ")
 	if result != "" {
 		t.Errorf("Expected empty, got '%s'", result)
 	}
 
 	// Only commas
-	result = normalizeIdentifiers(",,,")
+	result = NormalizeIdentifiers(",,,")
 	if result != "" {
 		t.Errorf("Expected empty, got '%s'", result)
 	}

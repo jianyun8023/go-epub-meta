@@ -26,5 +26,7 @@ coverage.out
 # OS
 .DS_Store
 Thumbs.db
-golibri
-test-suite
+/golibri
+/test-suite
+report.json
+results.csv

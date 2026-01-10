@@ -6,9 +6,6 @@ import (
 	"golibri/epub"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -75,7 +72,7 @@ type ComparisonResult struct {
 func runCompare(dir string) {
 	// Find all epub files
 	fmt.Println("Scanning directory for EPUB files...")
-	epubFiles, err := findEpubFiles(dir)
+	epubFiles, err := FindEpubFiles(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
 		os.Exit(1)
@@ -102,20 +99,6 @@ func runCompare(dir string) {
 	printSummary(results)
 
 	fmt.Println("\nDone!")
-}
-
-func findEpubFiles(dir string) ([]string, error) {
-	var files []string
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip files we can't access
-		}
-		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".epub") {
-			files = append(files, path)
-		}
-		return nil
-	})
-	return files, err
 }
 
 func processFiles(files []string, concurrency int) []ComparisonResult {
@@ -185,13 +168,9 @@ func compareFile(filepath string) ComparisonResult {
 		defer ep.Close()
 		result.GolibriTitle = ep.Package.GetTitle()
 
-		// Format Author to match ebook-meta: "Name [Sort]"
-		author := ep.Package.GetAuthor()
-		if sort := ep.Package.GetAuthorSort(); sort != "" && sort != author {
-			result.GolibriAuthor = fmt.Sprintf("%s [%s]", author, sort)
-		} else {
-			result.GolibriAuthor = author
-		}
+		// Format Author: ebook-meta output is often "Name [Sort]", but we now strip it in ParseEbookMetaOutput
+		// for cleaner comparisons.
+		result.GolibriAuthor = ep.Package.GetAuthor()
 
 		// Format Series to match ebook-meta: "Name #Index"
 		series := ep.Package.GetSeries()
@@ -208,7 +187,7 @@ func compareFile(filepath string) ComparisonResult {
 			result.GolibriSeries = series
 		}
 
-		result.GolibriLanguage = normalizeLanguage(ep.Package.GetLanguage())
+		result.GolibriLanguage = NormalizeLanguage(ep.Package.GetLanguage())
 		result.GolibriPublisher = ep.Package.GetPublisher()
 		result.GolibriProducer = ep.Package.GetProducer()
 		result.GolibriPublished = ep.Package.GetPublishDate()
@@ -238,51 +217,20 @@ func compareFile(filepath string) ComparisonResult {
 	if err != nil {
 		result.EbookError = err.Error()
 	} else {
-		parseEbookMeta(string(output), &result)
+		meta := ParseEbookMetaOutput(string(output))
+		result.EbookTitle = meta.Title
+		result.EbookAuthor = meta.Authors
+		result.EbookPublisher = meta.Publisher
+		result.EbookLanguage = meta.Language
+		result.EbookPublished = meta.Published
+		result.EbookIdentifiers = meta.Identifiers
+		result.EbookSeries = meta.Series
+		if meta.SeriesIndex != "" {
+			result.EbookSeries = fmt.Sprintf("%s #%s", meta.Series, meta.SeriesIndex)
+		}
 	}
 
 	return result
-}
-
-func parseEbookMeta(output string, result *ComparisonResult) {
-	lines := strings.Split(output, "\n")
-
-	// Regular expressions to parse ebook-meta output
-	patterns := map[string]*regexp.Regexp{
-		"title":       regexp.MustCompile(`^Title\s*:\s*(.+)$`),
-		"author":      regexp.MustCompile(`^Author\(s\)\s*:\s*(.+)$`),
-		"publisher":   regexp.MustCompile(`^Publisher\s*:\s*(.+)$`),
-		"producer":    regexp.MustCompile(`^Book Producer\s*:\s*(.+)$`),
-		"language":    regexp.MustCompile(`^Languages?\s*:\s*(.+)$`),
-		"published":   regexp.MustCompile(`^Published\s*:\s*(.+)$`),
-		"identifiers": regexp.MustCompile(`^Identifiers?\s*:\s*(.+)$`),
-		"series":      regexp.MustCompile(`^Series\s*:\s*(.+)$`),
-	}
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		if m := patterns["title"].FindStringSubmatch(line); m != nil {
-			result.EbookTitle = strings.TrimSpace(m[1])
-		} else if m := patterns["author"].FindStringSubmatch(line); m != nil {
-			result.EbookAuthor = strings.TrimSpace(m[1])
-		} else if m := patterns["publisher"].FindStringSubmatch(line); m != nil {
-			result.EbookPublisher = strings.TrimSpace(m[1])
-		} else if m := patterns["producer"].FindStringSubmatch(line); m != nil {
-			result.EbookProducer = strings.TrimSpace(m[1])
-		} else if m := patterns["language"].FindStringSubmatch(line); m != nil {
-			result.EbookLanguage = strings.TrimSpace(m[1])
-		} else if m := patterns["published"].FindStringSubmatch(line); m != nil {
-			result.EbookPublished = strings.TrimSpace(m[1])
-		} else if m := patterns["identifiers"].FindStringSubmatch(line); m != nil {
-			result.EbookIdentifiers = strings.TrimSpace(m[1])
-		} else if m := patterns["series"].FindStringSubmatch(line); m != nil {
-			result.EbookSeries = strings.TrimSpace(m[1])
-		}
-	}
 }
 
 func writeResults(results []ComparisonResult, filename string) error {
@@ -418,7 +366,7 @@ func printSummary(results []ComparisonResult) {
 			s.golibri++
 			// Identifiers need flexible matching (sorting, etc)
 			// For now simple normalize
-			if normalizeIdentifiers(r.GolibriIdentifiers) == normalizeIdentifiers(r.EbookIdentifiers) {
+			if NormalizeIdentifiers(r.GolibriIdentifiers) == NormalizeIdentifiers(r.EbookIdentifiers) {
 				s.match++
 			}
 			fieldStats["Identifiers"] = s
@@ -446,7 +394,7 @@ func printSummary(results []ComparisonResult) {
 		if r.GolibriPublished != "" {
 			s := fieldStats["Published"]
 			s.golibri++
-			if normalizeDate(r.GolibriPublished) == normalizeDate(r.EbookPublished) {
+			if NormalizeDate(r.GolibriPublished) == NormalizeDate(r.EbookPublished) {
 				s.match++
 			}
 			fieldStats["Published"] = s
@@ -502,64 +450,4 @@ func printSummary(results []ComparisonResult) {
 func normalize(s string) string {
 	// Simple normalization for comparison
 	return strings.ToLower(strings.TrimSpace(s))
-}
-
-func normalizeLanguage(lang string) string {
-	// Simple mapping for common codes to match ebook-meta 3-letter codes
-	// ebook-meta usually outputs ISO 639-2
-	lang = strings.ToLower(strings.TrimSpace(lang))
-	switch lang {
-	case "zh", "zh-cn", "zh-sg", "zh-hans":
-		return "zho"
-	case "zh-tw", "zh-hk", "zh-hant":
-		return "zho" // ebook-meta might map these to zho as well, or chi. Check? Assuming zho for now.
-	case "en", "en-us", "en-gb":
-		return "eng"
-	case "ja", "jp":
-		return "jpn"
-	case "fr":
-		return "fra"
-	case "de":
-		return "deu"
-	case "es":
-		return "spa"
-	case "it":
-		return "ita"
-	case "ru":
-		return "rus"
-	}
-	// Return as is if no match or already 3 letters
-	return lang
-}
-
-func normalizeDate(d string) string {
-	// Try parsing as RFC3339 (e.g., 2023-12-31T16:00:00+00:00)
-	if t, err := time.Parse(time.RFC3339, d); err == nil {
-		// Convert to local time (assuming user's perspective)
-		return t.In(time.Local).Format("2006-01-02")
-	}
-
-	// Fallback: Extract YYYY-MM-DD
-	if len(d) >= 10 {
-		return d[:10]
-	}
-	return d
-}
-
-func normalizeIdentifiers(ids string) string {
-	// Split by comma, trim, filter calibre UUID, sort, rejoin
-	parts := strings.Split(ids, ",")
-	var filtered []string
-	for i := range parts {
-		part := strings.ToLower(strings.TrimSpace(parts[i]))
-		// Skip calibre UUID (e.g., "calibre:e341dd8c-...") and generic UUID ("uuid:...")
-		if strings.HasPrefix(part, "calibre:") || strings.HasPrefix(part, "uuid:") {
-			continue
-		}
-		if part != "" {
-			filtered = append(filtered, part)
-		}
-	}
-	sort.Strings(filtered)
-	return strings.Join(filtered, ",")
 }

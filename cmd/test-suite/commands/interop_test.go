@@ -86,9 +86,9 @@ func TestStripSortSuffix(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		result := stripSortSuffix(tc.input)
+		result := StripSortSuffix(tc.input)
 		if result != tc.expected {
-			t.Errorf("stripSortSuffix(%q) = %q, want %q", tc.input, result, tc.expected)
+			t.Errorf("StripSortSuffix(%q) = %q, want %q", tc.input, result, tc.expected)
 		}
 	}
 }
@@ -193,37 +193,38 @@ Series              : Test Series #1
 Tags                : fiction, test
 Comments            : A test book description`
 
-	meta := parseEbookMetaOutput(output)
+	meta := ParseEbookMetaOutput(output)
 
 	tests := []struct {
 		field    string
+		value    string
 		expected string
 	}{
-		{"title", "Test Book"},
-		{"author", "John Doe"},
-		{"publisher", "Test Publisher"},
-		{"language", "eng"},
-		{"date", "2025-01-09"},
-		{"identifiers", "isbn:9781234567890"},
-		{"series", "Test Series"},
-		{"series_index", "1"},
-		{"subjects", "fiction, test"},
-		{"description", "A test book description"},
+		{"title", meta.Title, "Test Book"},
+		{"author", meta.Authors, "John Doe"},
+		{"publisher", meta.Publisher, "Test Publisher"},
+		{"language", meta.Language, "eng"},
+		{"date", meta.Published, "2025-01-09"},
+		{"identifiers", meta.Identifiers, "isbn:9781234567890"},
+		{"series", meta.Series, "Test Series"},
+		{"series_index", meta.SeriesIndex, "1"},
+		{"subjects", meta.Tags, "fiction, test"},
+		{"description", meta.Comments, "A test book description"},
 	}
 
 	for _, tc := range tests {
-		if meta[tc.field] != tc.expected {
-			t.Errorf("parseEbookMetaOutput field %q = %q, want %q",
-				tc.field, meta[tc.field], tc.expected)
+		if tc.value != tc.expected {
+			t.Errorf("ParseEbookMetaOutput field %q = %q, want %q",
+				tc.field, tc.value, tc.expected)
 		}
 	}
 }
 
 func TestParseEbookMetaOutput_Empty(t *testing.T) {
-	meta := parseEbookMetaOutput("")
+	meta := ParseEbookMetaOutput("")
 
-	if len(meta) != 0 {
-		t.Errorf("Expected empty map for empty output, got %d entries", len(meta))
+	if meta.Title != "" {
+		t.Errorf("Expected empty title for empty output, got %q", meta.Title)
 	}
 }
 
@@ -420,9 +421,9 @@ func TestFindTestDataFiles(t *testing.T) {
 			continue
 		}
 
-		files, err := findEpubFiles(formatDir)
+		files, err := FindEpubFiles(formatDir)
 		if err != nil {
-			t.Errorf("findEpubFiles(%s) error: %v", formatDir, err)
+			t.Errorf("FindEpubFiles(%s) error: %v", formatDir, err)
 			continue
 		}
 

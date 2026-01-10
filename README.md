@@ -150,15 +150,15 @@ go build -o test-suite ./cmd/test-suite/
 项目包含测试 EPUB 样本文件：
 
 ```bash
-# 使用内置测试数据
-./test-suite functional cmd/test-suite/testdata/valid
+- **内置合成数据**: 位于 `cmd/test-suite/testdata/valid`，由脚本生成，体积小，适合快速功能验证。
+- **真实样本数据**: 位于 `testdata/samples`，按 EPUB 版本（2.0, 3.x, Hybrid, OEBPS 1.0）分类，包含真实复杂的元数据场景。
 
-# 重新生成测试数据
-cd cmd/test-suite/testdata
-go run generate_test_epubs.go
+```bash
+# 使用真实样本运行综合测试
+./test-suite functional testdata/samples --mode all
 ```
 
-详见 [测试数据说明](cmd/test-suite/testdata/README.md)。
+详见 [测试数据说明](cmd/test-suite/testdata/README.md) 和 [样本说明](testdata/samples/README.md)。
 
 ## 🛠️ 作为库使用
 
