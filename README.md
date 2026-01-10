@@ -6,7 +6,7 @@
 一个高性能、轻量级的 Go 语言 EPUB 元数据编辑器，支持 EPUB 2.0 和 EPUB 3.x。
 
 **核心优势**：
-- **轻量级**：单个二进制文件，<10MB，零外部依赖（无需 Python/Qt）。
+- **轻量级**：单个二进制文件，<10MB，可控外部依赖。
 - **安全**：非破坏性编辑，保证未修改数据不被重新压缩。
 - **兼容**：支持 EPUB 2/3 标准，自动适配。
 
@@ -55,7 +55,7 @@ go build -o golibri ./cmd/golibri/
 ./golibri meta book.epub \
   --publisher "出版社" \
   --date "2025-01-07" \
-  --language "zh-CN" \
+  --language "zh" \
   --tags "科幻,历史,文学" \
   --comments "简介/描述文本" \
   --series-index "3" \
@@ -243,7 +243,7 @@ func main() {
 | 特性 | golibri | ebook-meta (Calibre) |
 |------|---------|---------------------|
 | 大小 | <10MB | >300MB (含依赖) |
-| 依赖 | 零依赖 | Python + Qt |
+| 依赖 | 轻依赖 | Python + Qt |
 | JSON 输出 | ✅ `--json` | ⚠️ 通常仅文本输出（不同版本行为不一） |
 | 性能 | 高（纯 Go） | 中（Python） |
 | 安装 | 单文件 | 需要 Calibre |
