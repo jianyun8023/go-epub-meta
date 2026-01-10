@@ -9,10 +9,20 @@ testdata/
 ├── valid/              # Valid EPUB files for normal testing
 │   ├── simple.epub
 │   ├── with_metadata.epub
-│   └── chinese.epub
+│   ├── chinese.epub
+│   ├── high_rating_tags.epub
+│   ├── multi_author_7.epub
+│   ├── multi_author_tags.epub
+│   ├── rich_metadata_full.epub
+│   └── rich_metadata_series.epub
 ├── invalid/            # Invalid/broken EPUB files for error handling tests
-│   └── broken.epub
-├── covers/             # Test cover images
+│   └── (reserved for error handling tests)
+├── corrupted/          # Corrupted EPUB files for fault tolerance tests
+├── samples/            # Real-world EPUB samples by version
+│   ├── epub2/          # EPUB 2.x format (5 files)
+│   ├── epub3-pure/     # EPUB 3.x pure format (5 files)
+│   ├── epub3-hybrid/   # EPUB 3.x with NCX (5 files)
+│   └── oebps1/         # OEBPS 1.x format (5 files)
 └── generate_test_epubs.go  # Script to regenerate test files
 ```
 
@@ -46,11 +56,24 @@ testdata/
    - Series: "测试系列"
    - Publisher: "测试出版社"
 
-### Invalid EPUBs
+4. **high_rating_tags.epub**
+   - Real-world EPUB with high rating and rich tags
 
-1. **broken.epub**
-   - Malformed EPUB for error handling tests
-   - Invalid container.xml
+5. **multi_author_7.epub**
+   - EPUB with 7 authors (multi-author parsing test)
+
+6. **multi_author_tags.epub**
+   - EPUB with multiple authors and tags
+
+7. **rich_metadata_full.epub**
+   - EPUB with comprehensive metadata
+
+8. **rich_metadata_series.epub**
+   - EPUB with detailed series information
+
+### Corrupted EPUBs
+
+See `corrupted/README.md` for details on fault tolerance test cases.
 
 ## Regenerating Test Files
 
@@ -86,7 +109,6 @@ go run generate_test_epubs.go
 
 ## Notes
 
-- Test files are intentionally small (~2KB each)
-- Cover images should be added to `covers/` directory manually if needed
-- All test EPUBs are valid EPUB 2.0 format
-- The invalid EPUB is designed to test error handling, not crash the parser
+- Test files range from ~2KB (synthetic) to ~20MB (real-world)
+- All test EPUBs are valid EPUB 2.0 format unless otherwise noted
+- The corrupted EPUBs are designed to test error handling and fault tolerance

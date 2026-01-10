@@ -24,7 +24,7 @@ go build -o golibri ./cmd/golibri/
 
 ### 命令行使用
 
-`golibri` 旨在替代 `ebook-meta`，提供简单直观的命令行接口。
+`golibri` 旨在替代 calibre 的 `ebook-meta`，提供简单直观的命令行接口。
 
 #### 1. 查看元数据
 
@@ -151,14 +151,14 @@ go build -o test-suite ./cmd/test-suite/
 
 ```bash
 - **内置合成数据**: 位于 `cmd/test-suite/testdata/valid`，由脚本生成，体积小，适合快速功能验证。
-- **真实样本数据**: 位于 `testdata/samples`，按 EPUB 版本（2.0, 3.x, Hybrid, OEBPS 1.0）分类，包含真实复杂的元数据场景。
+- **真实样本数据**: 位于 `cmd/test-suite/testdata/samples`，按 EPUB 版本（2.0, 3.x, Hybrid, OEBPS 1.0）分类，包含真实复杂的元数据场景。
 
 ```bash
 # 使用真实样本运行综合测试
-./test-suite functional testdata/samples --mode all
+./test-suite functional cmd/test-suite/testdata/samples --mode all
 ```
 
-详见 [测试数据说明](cmd/test-suite/testdata/README.md) 和 [样本说明](testdata/samples/README.md)。
+详见 [测试数据说明](cmd/test-suite/testdata/README.md) 和 [样本说明](cmd/test-suite/testdata/samples/README.md)。
 
 ## 🛠️ 作为库使用
 

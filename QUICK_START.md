@@ -121,7 +121,6 @@ Ebook-meta success: 3 (100.0%)
 ## 📚 详细文档
 
 - **完整说明**：[README.md](README.md)
-- **实现报告**：[IMPLEMENTATION_COMPLETE.md](IMPLEMENTATION_COMPLETE.md)
 - **测试数据**：[cmd/test-suite/testdata/README.md](cmd/test-suite/testdata/README.md)
 
 ## 🎯 核心特性
