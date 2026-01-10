@@ -22,6 +22,7 @@ var (
 	metaASIN        string
 	metaIdentifiers []string
 	metaJSON        bool
+	metaGetCover    string // Export cover to file
 	// New write flags
 	metaPublisher   string
 	metaDate        string
@@ -42,6 +43,7 @@ func init() {
 	metaCmd.Flags().StringArrayVarP(&metaIdentifiers, "identifier", "i", []string{}, "Set identifier (format: scheme:value, e.g., douban:12345678)")
 	metaCmd.Flags().StringVarP(&metaOutput, "output", "o", "", "Output file path (default: modify in-place)")
 	metaCmd.Flags().BoolVar(&metaJSON, "json", false, "Output metadata in JSON format (compatible with ebook-meta)")
+	metaCmd.Flags().StringVar(&metaGetCover, "get-cover", "", "Export cover image to specified file")
 	// New write flags
 	metaCmd.Flags().StringVar(&metaPublisher, "publisher", "", "Set publisher")
 	metaCmd.Flags().StringVar(&metaDate, "date", "", "Set publication date")
@@ -67,6 +69,16 @@ var metaCmd = &cobra.Command{
 			os.Exit(1)
 		}
 		defer ep.Close()
+
+		// Extract cover mode
+		if metaGetCover != "" {
+			if err := extractCover(ep, metaGetCover); err != nil {
+				fmt.Printf("Error extracting cover: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Cover exported to %s\n", metaGetCover)
+			return
+		}
 
 		// Read Mode - check if any write flag is set
 		isWriteMode := metaTitle != "" || metaAuthor != "" || metaSeries != "" || metaCover != "" ||
@@ -277,6 +289,26 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen-3]) + "..."
+}
+
+// extractCover extracts the cover image from EPUB and saves it to the specified file.
+func extractCover(ep *epub.Reader, outputPath string) error {
+	rc, _, err := ep.GetCoverImage()
+	if err != nil {
+		return fmt.Errorf("no cover found in EPUB: %w", err)
+	}
+	defer rc.Close()
+
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return fmt.Errorf("failed to read cover data: %w", err)
+	}
+
+	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write cover to %s: %w", outputPath, err)
+	}
+
+	return nil
 }
 
 func applyChanges(ep *epub.Reader) error {

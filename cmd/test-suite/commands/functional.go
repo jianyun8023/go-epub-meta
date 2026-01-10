@@ -107,8 +107,10 @@ func testFile(path string, mode string) error {
 		return testRoundtrip(path)
 	case "write":
 		return testWrite(path)
+	case "cover":
+		return testCover(path)
 	case "all":
-		// Run all tests (read + write coverage)
+		// Run all tests (read + write + cover coverage)
 		if err := testRead(path); err != nil {
 			return fmt.Errorf("read test: %w", err)
 		}
@@ -120,6 +122,9 @@ func testFile(path string, mode string) error {
 		}
 		if err := testWrite(path); err != nil {
 			return fmt.Errorf("write test: %w", err)
+		}
+		if err := testCover(path); err != nil {
+			return fmt.Errorf("cover test: %w", err)
 		}
 		return nil
 	default:
@@ -258,6 +263,105 @@ func testWrite(path string) error {
 	}
 	if author := ep.Package.GetAuthor(); !strings.Contains(author, "Test Author") {
 		return fmt.Errorf("author not modified correctly: got %s", author)
+	}
+
+	return nil
+}
+
+// testCover tests cover extraction and writing
+func testCover(path string) error {
+	// First, check if the EPUB has a cover
+	ep, err := epub.Open(path)
+	if err != nil {
+		return fmt.Errorf("open failed: %w", err)
+	}
+
+	_, _, coverErr := ep.GetCoverImage()
+	ep.Close()
+
+	// Test 1: If EPUB has cover, test extraction via CLI
+	if coverErr == nil {
+		// Create temp file for extracted cover
+		coverTmp, err := os.CreateTemp("", "cover-extract-*.jpg")
+		if err != nil {
+			return err
+		}
+		coverPath := coverTmp.Name()
+		coverTmp.Close()
+		defer os.Remove(coverPath)
+
+		// Extract cover using CLI
+		cmd := exec.Command(funcGolibriPath, "meta", path, "--get-cover", coverPath)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("cover extraction failed: %w, stderr: %s", err, stderr.String())
+		}
+
+		// Verify extracted file exists and has content
+		info, err := os.Stat(coverPath)
+		if err != nil {
+			return fmt.Errorf("extracted cover not found: %w", err)
+		}
+		if info.Size() == 0 {
+			return fmt.Errorf("extracted cover is empty")
+		}
+	}
+
+	// Test 2: Test cover writing (write → extract → verify)
+	// Create temp cover image (minimal PNG)
+	coverData := []byte{
+		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+		0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+		0x54, 0x08, 0xD7, 0x63, 0xF8, 0xFF, 0xFF, 0x3F,
+		0x00, 0x05, 0xFE, 0x02, 0xFE, 0xDC, 0xCC, 0x59,
+		0xE7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+		0x44, 0xAE, 0x42, 0x60, 0x82,
+	}
+
+	coverFile, err := os.CreateTemp("", "test-cover-*.png")
+	if err != nil {
+		return err
+	}
+	coverFile.Write(coverData)
+	coverInputPath := coverFile.Name()
+	coverFile.Close()
+	defer os.Remove(coverInputPath)
+
+	// Create output EPUB with new cover
+	outputTmp, err := os.CreateTemp("", "golibri-cover-write-*.epub")
+	if err != nil {
+		return err
+	}
+	outputPath := outputTmp.Name()
+	outputTmp.Close()
+	defer os.Remove(outputPath)
+
+	cmd := exec.Command(funcGolibriPath, "meta", path, "-c", coverInputPath, "-o", outputPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("cover write failed: %w, stderr: %s", err, stderr.String())
+	}
+
+	// Verify the cover was written
+	ep2, err := epub.Open(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open modified EPUB: %w", err)
+	}
+	defer ep2.Close()
+
+	_, mime, err := ep2.GetCoverImage()
+	if err != nil {
+		return fmt.Errorf("cover not found after write: %w", err)
+	}
+	if mime != "image/png" {
+		return fmt.Errorf("unexpected cover mime type: %s", mime)
 	}
 
 	return nil

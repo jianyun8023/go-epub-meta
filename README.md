@@ -104,6 +104,13 @@ go build -o golibri ./cmd/golibri/
 ./golibri meta book.epub -c cover.jpg -o output.epub
 ```
 
+#### 5. 导出封面
+
+```bash
+# 将封面导出到指定文件
+./golibri meta book.epub --get-cover cover.jpg
+```
+
 ## 🧪 测试套件
 
 Golibri 提供了独立的测试套件 `test-suite`，用于功能验证和与 ebook-meta 对比。
