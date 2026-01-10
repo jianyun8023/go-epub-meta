@@ -407,8 +407,8 @@ func TestCalculateSummary(t *testing.T) {
 // =============================================================================
 
 func TestFindTestDataFiles(t *testing.T) {
-	// Find testdata directory
-	testdataDir := filepath.Join("..", "..", "..", "testdata", "samples")
+	// Find testdata directory (now under cmd/test-suite/testdata/samples)
+	testdataDir := filepath.Join("testdata", "samples")
 
 	if _, err := os.Stat(testdataDir); os.IsNotExist(err) {
 		t.Skip("Skipping: testdata/samples directory not found")
